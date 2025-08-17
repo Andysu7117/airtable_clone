@@ -2,12 +2,14 @@ import { notFound } from "next/navigation";
 import BaseView from "~/app/_components/BaseView";
 
 interface BasePageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default async function BasePage({ params }: BasePageProps) {
+  const { id } = await params;
+  
   // TODO: Re-enable auth check after testing
   // const session = await auth();
   // if (!session?.user) {
@@ -16,7 +18,7 @@ export default async function BasePage({ params }: BasePageProps) {
 
   // Test data for development
   const base = {
-    id: params.id,
+    id: id,
     name: "Untitled Base",
     tables: [
       {
