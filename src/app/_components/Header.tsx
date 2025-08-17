@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Search, HelpCircle, Bell, User, Plus } from "lucide-react";
+import { Search, HelpCircle, Bell } from "lucide-react";
 
 const Header = () => {
   return (

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Plus, Type, Hash } from "lucide-react";
 import { faker } from "@faker-js/faker";
-import type { Column, Table } from "./types";
+import type { Column, Table, TableRow } from "./types";
 
 interface TableInterfaceProps {
   table: Table;
@@ -11,22 +11,22 @@ interface TableInterfaceProps {
 
 export default function TableInterface({ table }: TableInterfaceProps) {
   const [columns, setColumns] = useState<Column[]>(table.columns);
-  const [rows, setRows] = useState<any[]>(table.rows);
+  const [rows, setRows] = useState<TableRow[]>(table.rows);
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; colIndex: number } | null>(null);
   const [editingValue, setEditingValue] = useState<string>("");
 
   // Generate sample data
-  const generateData = (count: number) => {
-    const newRows = [];
+  const generateData = useCallback((count: number) => {
+    const newRows: TableRow[] = [];
     for (let i = 0; i < count; i++) {
-      const row: any = {};
+      const row: TableRow = {};
       columns.forEach((col) => {
         row[col.id] = col.type === "text" ? faker.lorem.words(2) : faker.number.int({ min: 1, max: 1000 });
       });
       newRows.push(row);
     }
     setRows(newRows);
-  };
+  }, [columns]);
 
   // Add column
   const addColumn = () => {
@@ -41,7 +41,7 @@ export default function TableInterface({ table }: TableInterfaceProps) {
 
   // Add row
   const addRow = () => {
-    const newRow: any = {};
+    const newRow: TableRow = {};
     columns.forEach((col) => { newRow[col.id] = ""; });
     setRows([...rows, newRow]);
   };
@@ -55,9 +55,9 @@ export default function TableInterface({ table }: TableInterfaceProps) {
   const saveCell = () => {
     if (editingCell && columns[editingCell.colIndex]) {
       const column = columns[editingCell.colIndex];
-      if (column) {
+      if (column && editingCell.rowIndex < rows.length) {
         const newRows = [...rows];
-        newRows[editingCell.rowIndex][column.id] = editingValue;
+        newRows[editingCell.rowIndex]![column.id] = editingValue;
         setRows(newRows);
         setEditingCell(null);
         setEditingValue("");
@@ -68,7 +68,7 @@ export default function TableInterface({ table }: TableInterfaceProps) {
   // Generate initial data
   useMemo(() => {
     if (rows.length === 0) generateData(100);
-  }, []);
+  }, [rows.length, generateData]);
 
   return (
     <div className="flex flex-col h-full">
@@ -138,13 +138,13 @@ export default function TableInterface({ table }: TableInterfaceProps) {
                     autoFocus
                   />
                 ) : (
-                  <div
-                    className="min-h-[24px] cursor-pointer hover:bg-blue-50 p-1 rounded"
-                    onClick={() => startEditing(rowIndex, colIndex, row[column.id] || "")}
-                  >
-                    <span className="text-sm text-gray-900">
-                      {row[column.id] || ""}
-                    </span>
+                                     <div
+                     className="min-h-[24px] cursor-pointer hover:bg-blue-50 p-1 rounded"
+                     onClick={() => startEditing(rowIndex, colIndex, String(row[column.id] ?? ""))}
+                   >
+                                     <span className="text-sm text-gray-900">
+                   {String(row[column.id] ?? "")}
+                 </span>
                   </div>
                 )}
               </div>

@@ -4,11 +4,15 @@ export interface Column {
   type: "text" | "number";
 }
 
+export interface TableRow {
+  [key: string]: string | number;
+}
+
 export interface Table {
   id: string;
   name: string;
   columns: Column[];
-  rows: any[];
+  rows: TableRow[];
 }
 
 export interface Base {
