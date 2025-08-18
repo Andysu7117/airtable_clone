@@ -14,16 +14,9 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
-model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-
-    createdBy   User   @relation(fields: [createdById], references: [id])
-    createdById String
-
-    @@index([name])
+enum AuthProvider {
+    LOCAL
+    GOOGLE
 }
 
 // Necessary for Next auth
@@ -58,11 +51,13 @@ model User {
     id            String    @id @default(cuid())
     name          String?
     email         String?   @unique
-    emailVerified DateTime?
     image         String?
+    authProvider  AuthProvider?
+    // For LOCAL accounts
+    passwordHash  String?
     accounts      Account[]
     sessions      Session[]
-    posts         Post[]
+    bases         Base[]
 }
 
 model VerificationToken {
@@ -71,4 +66,60 @@ model VerificationToken {
     expires    DateTime
 
     @@unique([identifier, token])
+}
+
+// Airtable-like domain models
+model Base {
+    id        String   @id @default(cuid())
+    name      String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    owner     User     @relation(fields: [ownerId], references: [id])
+    ownerId   String
+
+    tables Table[]
+
+    @@index([ownerId])
+}
+
+model Table {
+    id        String   @id @default(cuid())
+    name      String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    base      Base     @relation(fields: [baseId], references: [id], onDelete: Cascade)
+    baseId    String
+
+    columns Column[]
+    records Record[]
+
+    @@index([baseId])
+}
+
+enum ColumnType {
+    TEXT
+    NUMBER
+}
+
+model Column {
+    id        String     @id @default(cuid())
+    name      String
+    type      ColumnType @default(TEXT)
+    order     Int        @default(0)
+    table     Table      @relation(fields: [tableId], references: [id], onDelete: Cascade)
+    tableId   String
+
+    @@index([tableId])
+}
+
+model Record {
+    id        String   @id @default(cuid())
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    table     Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
+    tableId   String
+    // store row data as JSON keyed by column ids
+    data      Json
+
+    @@index([tableId])
 }

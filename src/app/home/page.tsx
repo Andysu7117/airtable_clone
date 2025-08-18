@@ -1,8 +1,26 @@
 import { CheckCircle, X, Sparkles, Grid3X3, Upload, FileText, Plus } from "lucide-react";
 import BaseGrid from "../_components/BaseGrid";
 import Header from "../_components/Header";
+import { auth } from "~/server/auth";
+import { db } from "~/server/db";
+import { redirect } from "next/navigation";
 
 export default async function HomePage() {
+  const session = await auth();
+  console.log("home session", session);
+  if (!session?.user) redirect("/");
+
+  // Ensure the user exists in DB (defensive in case of stale sessions)
+  const existingUser = await db.user.findFirst({
+    where: {
+      OR: [
+        { id: session.user.id },
+        { email: session.user.email ?? undefined },
+      ],
+    },
+  });
+  if (!existingUser) redirect("/");
+
   const bases = [
     { id: "1", name: "Untitled Base", color: "green", lastOpened: "just now" },
   ];
