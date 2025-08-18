@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { signIn, getCsrfToken } from "next-auth/react";
 import { auth } from "~/server/auth";
 
 export default function SignInPage() {
@@ -10,6 +10,12 @@ export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
+
+  // Get CSRF token for custom Google form
+  React.useEffect(() => {
+    void (async () => setCsrfToken((await getCsrfToken()) ?? null))();
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     console.log("Signing in email is " + email);
@@ -78,12 +84,22 @@ export default function SignInPage() {
             Sign in with <span className="font-medium">Single Sign On</span>
           </Link>
 
-          <Link
-            href="/api/auth/signin/google?callbackUrl=/home"
-            className="block w-full rounded-md border border-gray-300 px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
-          >
-            <span className="mr-2">🟢</span> Continue with <span className="font-medium">Google</span>
-          </Link>
+          <form action="/api/auth/signin/google" method="POST">
+            <input type="hidden" name="csrfToken" value={csrfToken ?? undefined} />
+            <input type="hidden" name="callbackUrl" value="/home" />
+            <button
+              type="submit"
+              className="flex w-full items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50"
+            >
+              <span>Sign in with Google</span>
+              <img
+                loading="lazy"
+                src="https://authjs.dev/img/providers/google.svg"
+                alt="Google"
+                className="h-5 w-5 object-contain"
+              />
+            </button>
+          </form>
 
           <button
             disabled

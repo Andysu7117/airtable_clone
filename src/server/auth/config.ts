@@ -1,9 +1,12 @@
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import type { Adapter } from "next-auth/adapters";
 import { type DefaultSession, type NextAuthConfig } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 
 import { db } from "~/server/db";
+
+const safeAdapter: Adapter = PrismaAdapter(db) as Adapter;
 
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`
@@ -71,22 +74,19 @@ export const authConfig = {
       },
     }),
   ],
-  adapter: PrismaAdapter(db),
+  adapter: safeAdapter,
   callbacks: {
     async signIn({ account, user, profile }) {
       console.log("signIn", account?.provider, user?.email);
-      // Enforce separation: if an email exists with LOCAL, block Google sign in; and vice versa
+      // Prevent provider mixing using Accounts table, not a user flag
       if (!user?.email) return false;
-      const existing = await db.user.findUnique({ where: { email: user.email } });
-      if (!existing) return true; // allow - will be linked below by Prisma adapter
-
-      // Cast to access custom field before prisma types are regenerated
-      const provider = (existing as unknown as { authProvider?: string }).authProvider;
+      // If Google sign-in and a local row exists (heuristic via Account table), block
       if (account?.provider === "google") {
-        // if user previously created with LOCAL, disallow Google sign-in (must use Google signup)
-        if (provider && provider !== "GOOGLE") return false;
+        const localAccount = await db.account.findFirst({
+          where: { provider: "credentials", user: { email: user.email } },
+        });
+        if (localAccount) return false;
       }
-      // For any OAuth sign-in, allow if provider matches or is null (legacy user)
       return true;
     },
     async jwt({ token, user }) {
