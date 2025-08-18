@@ -4,8 +4,14 @@ import Header from "../_components/Header";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export default async function HomePage() {
+  const c = await cookies();
+  console.log("home cookie", c.get("authjs.session-token")?.value?.slice(0,20));
   const session = await auth();
   console.log("home session", session);
   if (!session?.user) redirect("/");

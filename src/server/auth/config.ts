@@ -32,6 +32,7 @@ declare module "next-auth" {
  * @see https://next-auth.js.org/configuration/options
  */
 export const authConfig = {
+  session: { strategy: "jwt" },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -55,6 +56,8 @@ export const authConfig = {
           passwordHash?: string | null;
           authProvider?: string | null;
         } | null;
+        console.log("authorize input", credentials);
+        console.log("authorize user", user?.id, user?.email, user?.authProvider);
         if (!user) return null;
         if ((user as any).authProvider === "GOOGLE") return null;
         if (!(user as any).passwordHash) return null;
@@ -71,6 +74,7 @@ export const authConfig = {
   adapter: PrismaAdapter(db),
   callbacks: {
     async signIn({ account, user, profile }) {
+      console.log("signIn", account?.provider, user?.email);
       // Enforce separation: if an email exists with LOCAL, block Google sign in; and vice versa
       if (!user?.email) return false;
       const existing = await db.user.findUnique({ where: { email: user.email } });
@@ -86,18 +90,20 @@ export const authConfig = {
       return true;
     },
     async jwt({ token, user }) {
+      console.log("jwt in", { hasUser: !!user, tokenSub: token.sub, tokenId: (token as any).id });
       if (user) {
+        
         // persist user id on token for session mapping
         (token as any).id = (user as any).id;
       }
+      console.log("jwt out", token);
       return token;
     },
-    session: ({ session, token }) => ({
+    session: ({ session, token, user }) => ({
       ...session,
       user: {
         ...session.user,
-        // try both JWT 'sub' and custom 'id'
-        id: ((token as any).id ?? token.sub) as string,
+        id: ((user as any)?.id ?? (token as any)?.id ?? token?.sub) as string,
       },
     }),
   },

@@ -12,9 +12,9 @@ export default function SignInPage() {
   const [error, setError] = useState<string | null>(null);
 
   const onSubmit = async (e: React.FormEvent) => {
+    console.log("Signing in email is " + email);
     e.preventDefault();
     setError(null);
-    console.log("Signing in email is " + email);
     const result = await signIn("credentials", {
       email,
       password,
