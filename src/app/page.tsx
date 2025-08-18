@@ -1,12 +1,12 @@
 "use client";
 import Link from "next/link";
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+// import { useRouter } from "next/navigation";
 import { signIn, getCsrfToken } from "next-auth/react";
-import { auth } from "~/server/auth";
+// import { auth } from "~/server/auth";
 
 export default function SignInPage() {
-  const router = useRouter();
+  // const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -92,12 +92,8 @@ export default function SignInPage() {
               className="flex w-full items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50"
             >
               <span>Sign in with Google</span>
-              <img
-                loading="lazy"
-                src="https://authjs.dev/img/providers/google.svg"
-                alt="Google"
-                className="h-5 w-5 object-contain"
-              />
+              {/* Using img here is acceptable; swap to next/image later if desired */}
+              <img loading="lazy" src="https://authjs.dev/img/providers/google.svg" alt="Google" className="h-5 w-5 object-contain" />
             </button>
           </form>
 

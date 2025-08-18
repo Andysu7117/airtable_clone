@@ -12,7 +12,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Email and password required" }, { status: 400 });
     }
 
-    const user = await db.user.findUnique({ where: { email } });
+    const raw = await db.user.findUnique({ where: { email } });
+    const user = raw as unknown as { id: string; email: string | null; authProvider?: string | null; passwordHash?: string | null } | null;
     if (!user || user.authProvider === "GOOGLE") {
       return NextResponse.json({ message: "Account not available for password sign-in" }, { status: 401 });
     }
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
 
     // At this stage you could create a session manually, but we'll rely on NextAuth sessions elsewhere.
     return NextResponse.json({ ok: true });
-  } catch (e) {
+  } catch (_err) {
     return NextResponse.json({ message: "Unexpected error" }, { status: 500 });
   }
 }

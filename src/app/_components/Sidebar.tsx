@@ -8,7 +8,7 @@ interface SidebarProps {
   onTableSelect: (table: Table) => void;
 }
 
-export default function Sidebar({ selectedTable, onTableSelect }: SidebarProps) {
+export default function Sidebar({ selectedTable, onTableSelect: _onTableSelect }: SidebarProps) {
   return (
     <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col">
       {/* Table Selection */}
