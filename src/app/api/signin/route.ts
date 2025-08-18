@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
     // At this stage you could create a session manually, but we'll rely on NextAuth sessions elsewhere.
     return NextResponse.json({ ok: true });
-  } catch (_err) {
+  } catch {
     return NextResponse.json({ message: "Unexpected error" }, { status: 500 });
   }
 }

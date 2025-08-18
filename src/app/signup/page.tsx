@@ -33,7 +33,7 @@ export default function SignupPage() {
         password,
         callbackUrl: "/home",
       });
-    } catch (_err) {
+    } catch {
       setError("Unexpected error. Please try again.");
     } finally {
       setSubmitting(false);

@@ -63,11 +63,8 @@ export const authConfig = {
         }
         const passwordHash = (user as unknown as { passwordHash?: string | null }).passwordHash;
         if (!passwordHash) return null;
-        const bcrypt = await import("bcryptjs");
-        const compare: (a: string, b: string) => Promise<boolean> =
-          // prefer default export when available
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          (bcrypt as any).default?.compare ?? (bcrypt as unknown as { compare: (a: string, b: string) => Promise<boolean> }).compare;
+        const { default: bcryptDefault } = (await import("bcryptjs")) as unknown as { default?: { compare: (a: string, b: string) => Promise<boolean> } };
+        const compare = (bcryptDefault?.compare ?? (await import("bcryptjs")).compare) as (a: string, b: string) => Promise<boolean>;
         const ok = await compare(
           credentials.password as string,
           passwordHash as string,
@@ -79,7 +76,7 @@ export const authConfig = {
   ],
   adapter: safeAdapter,
   callbacks: {
-    async signIn({ account, user, profile }) {
+    async signIn({ account, user }) {
       console.log("signIn", account?.provider, user?.email);
       // Prevent provider mixing using Accounts table, not a user flag
       if (!user?.email) return false;
@@ -93,11 +90,11 @@ export const authConfig = {
       return true;
     },
     async jwt({ token, user }) {
-      console.log("jwt in", { hasUser: !!user, tokenSub: token.sub, tokenId: (token as unknown as { id?: string }).id });
+      console.log("jwt in", { hasUser: !!user, tokenSub: token.sub, tokenId: (token as { id?: string }).id });
       if (user) {
         
         // persist user id on token for session mapping
-        (token as unknown as { id?: string }).id = (user as unknown as { id: string }).id;
+        (token as { id?: string }).id = (user as { id: string }).id;
       }
       console.log("jwt out", token);
       return token;
@@ -106,7 +103,7 @@ export const authConfig = {
       ...session,
       user: {
         ...session.user,
-        id: ((user as unknown as { id?: string })?.id ?? (token as unknown as { id?: string })?.id ?? token?.sub) as string,
+        id: ((user as { id?: string })?.id ?? (token as { id?: string })?.id ?? token?.sub) as string,
       },
     }),
   },
