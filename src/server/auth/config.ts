@@ -65,10 +65,7 @@ export const authConfig = {
         if (!passwordHash) return null;
         const { default: bcryptDefault } = (await import("bcryptjs")) as unknown as { default?: { compare: (a: string, b: string) => Promise<boolean> } };
         const compare = (bcryptDefault?.compare ?? (await import("bcryptjs")).compare) as (a: string, b: string) => Promise<boolean>;
-        const ok = await compare(
-          credentials.password as string,
-          passwordHash as string,
-        );
+        const ok = await compare(credentials.password as string, passwordHash);
         if (!ok) return null;
         return { id: user.id, email: user.email, name: user.name ?? undefined, image: (user as unknown as { image?: string | null }).image ?? undefined } as unknown as { id: string; email?: string | null; name?: string | null; image?: string | null };
       },
@@ -103,7 +100,7 @@ export const authConfig = {
       ...session,
       user: {
         ...session.user,
-        id: ((user as { id?: string })?.id ?? (token as { id?: string })?.id ?? token?.sub) as string,
+        id: ((user as { id?: string })?.id ?? (token as { id?: string })?.id ?? token.sub!) as string,
       },
     }),
   },
