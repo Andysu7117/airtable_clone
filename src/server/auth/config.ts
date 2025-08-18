@@ -100,7 +100,7 @@ export const authConfig = {
       ...session,
       user: {
         ...session.user,
-        id: ((user as { id?: string })?.id ?? (token as { id?: string })?.id ?? token.sub!) as string,
+        id: ((user as { id?: string })?.id ?? (token as { id?: string })?.id ?? token.sub!),
       },
     }),
   },
