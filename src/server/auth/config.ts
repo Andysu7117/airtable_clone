@@ -49,28 +49,27 @@ export const authConfig = {
       },
       authorize: async (credentials) => {
         if (!credentials?.email || !credentials.password) return null;
-        const user = (await db.user.findUnique({
+        const user = await db.user.findUnique({
           where: { email: credentials.email as string },
-        })) as unknown as {
-          id: string;
-          email: string | null;
-          name: string | null;
-          image?: string | null;
-          passwordHash?: string | null;
-          authProvider?: string | null;
-        } | null;
+        });
         console.log("authorize input", credentials);
-        console.log("authorize user", user?.id, user?.email, user?.authProvider);
+        console.log("authorize user", user?.id, user?.email);
         if (!user) return null;
-        if ((user as any).authProvider === "GOOGLE") return null;
-        if (!(user as any).passwordHash) return null;
-        const { compare } = await import("bcryptjs").then((m) => ({ compare: (m as any).default?.compare ?? (m as any).compare }));
+        try {
+          const userAuthProvider = (user as unknown as { authProvider?: string | null }).authProvider;
+          if (userAuthProvider === "GOOGLE") return null;
+        } catch {
+          // field absent in types; ignore
+        }
+        const passwordHash = (user as unknown as { passwordHash?: string | null }).passwordHash;
+        if (!passwordHash) return null;
+        const { compare } = await import("bcryptjs").then((m) => ({ compare: (m as unknown as { compare: typeof import("bcryptjs").compare }).compare ?? (m as any).compare }));
         const ok = await compare(
           credentials.password as string,
-          (user as any).passwordHash as string,
+          passwordHash as string,
         );
         if (!ok) return null;
-        return { id: user.id, email: user.email, name: user.name ?? undefined, image: (user as any).image ?? undefined } as any;
+        return { id: user.id, email: user.email, name: user.name ?? undefined, image: (user as unknown as { image?: string | null }).image ?? undefined } as unknown as { id: string; email?: string | null; name?: string | null; image?: string | null };
       },
     }),
   ],
@@ -94,7 +93,7 @@ export const authConfig = {
       if (user) {
         
         // persist user id on token for session mapping
-        (token as any).id = (user as any).id;
+        (token as unknown as { id?: string }).id = (user as unknown as { id: string }).id;
       }
       console.log("jwt out", token);
       return token;
@@ -103,7 +102,7 @@ export const authConfig = {
       ...session,
       user: {
         ...session.user,
-        id: ((user as any)?.id ?? (token as any)?.id ?? token?.sub) as string,
+        id: ((user as unknown as { id?: string })?.id ?? (token as unknown as { id?: string })?.id ?? token?.sub) as string,
       },
     }),
   },

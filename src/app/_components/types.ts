@@ -4,9 +4,7 @@ export interface Column {
   type: "text" | "number";
 }
 
-export interface TableRow {
-  [key: string]: string | number;
-}
+export type TableRow = Record<string, string | number>;
 
 export interface Table {
   id: string;

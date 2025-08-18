@@ -27,7 +27,7 @@ export default function TableHeader({ base }: TableHeaderProps) {
             <span className="mr-1">↻</span>
           </button>
           <span className="text-sm text-gray-600">Trial: 14 days left</span>
-          <button className="text-sm text-blue-600 hover:text-blue-700">See what's new</button>
+          <button className="text-sm text-blue-600 hover:text-blue-700">See what&apos;s new</button>
           <button className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Share</button>
         </div>
       </div>

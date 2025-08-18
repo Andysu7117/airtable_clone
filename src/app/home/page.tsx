@@ -46,7 +46,7 @@ export default async function HomePage() {
           </div>
           <div className="flex items-center space-x-4">
             <button className="text-sm text-green-700 hover:text-green-800 underline">
-              See what's new
+              See what&apos;s new
             </button>
             <button className="text-green-600 hover:text-green-700">
               <X className="w-4 h-4" />
