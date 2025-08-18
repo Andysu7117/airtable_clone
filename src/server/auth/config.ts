@@ -63,7 +63,11 @@ export const authConfig = {
         }
         const passwordHash = (user as unknown as { passwordHash?: string | null }).passwordHash;
         if (!passwordHash) return null;
-        const { compare } = await import("bcryptjs").then((m) => ({ compare: (m as unknown as { compare: typeof import("bcryptjs").compare }).compare ?? (m as any).compare }));
+        const bcrypt = await import("bcryptjs");
+        const compare: (a: string, b: string) => Promise<boolean> =
+          // prefer default export when available
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          (bcrypt as any).default?.compare ?? (bcrypt as unknown as { compare: (a: string, b: string) => Promise<boolean> }).compare;
         const ok = await compare(
           credentials.password as string,
           passwordHash as string,
@@ -89,7 +93,7 @@ export const authConfig = {
       return true;
     },
     async jwt({ token, user }) {
-      console.log("jwt in", { hasUser: !!user, tokenSub: token.sub, tokenId: (token as any).id });
+      console.log("jwt in", { hasUser: !!user, tokenSub: token.sub, tokenId: (token as unknown as { id?: string }).id });
       if (user) {
         
         // persist user id on token for session mapping

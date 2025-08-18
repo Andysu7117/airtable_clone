@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+// import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 
 export default function SignupPage() {
-  const router = useRouter();
+  // const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -23,8 +23,8 @@ export default function SignupPage() {
         body: JSON.stringify({ email, password }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data?.message ?? "Unable to create account");
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        setError(data.message ?? "Unable to create account");
         return;
       }
       console.log("signing in email is " + email);
@@ -33,7 +33,7 @@ export default function SignupPage() {
         password,
         callbackUrl: "/home",
       });
-    } catch (err) {
+    } catch (_err) {
       setError("Unexpected error. Please try again.");
     } finally {
       setSubmitting(false);
