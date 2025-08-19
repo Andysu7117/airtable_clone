@@ -18,14 +18,14 @@ export async function POST(request: NextRequest) {
     const base = await db.base.create({
       data: {
         name: name.trim(),
-        createdBy: { connect: { id: session.user.id } },
+        ownerId: session.user.id,
         tables: {
           create: {
             name: "Untitled Table",
             columns: {
               create: [
-                { name: "Name", type: "TEXT", isRequired: true },
-                { name: "Notes", type: "TEXT", isRequired: false },
+                { name: "Name", type: "TEXT"},
+                { name: "Notes", type: "TEXT"},
               ],
             },
           },
