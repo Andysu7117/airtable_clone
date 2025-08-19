@@ -4,7 +4,7 @@ import { db } from "~/server/db";
 
 export async function DELETE(
   request: NextRequest,
-  { params }: {params: { id : string }}
+  params: {params: { id : string }} 
 ) {
   try {
     const session = await auth();
@@ -12,7 +12,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = params;
+    const id = params;
     
     if (!id) {
       return NextResponse.json({ error: "Base ID is required" }, { status: 400 });
