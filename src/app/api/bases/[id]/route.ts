@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "~/server/auth";
-import { RouteHandlerContext } from "next/dist/server/route-modules/route-handler";
 import { db } from "~/server/db";
 
 export async function DELETE(
   request: NextRequest,
-  { params }: RouteHandlerContext<{ id: string }>
+  { params }: any
 ) {
   try {
     const session = await auth();
