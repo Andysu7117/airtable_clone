@@ -9,7 +9,7 @@ import {
   type ColumnDef,
 } from "@tanstack/react-table";
 import { Eye, Filter, Group, ArrowUpDown, Palette, List, Share, Search, Plus, CheckSquare, Info } from "lucide-react";
-import type { Table as TableType, Column, TableRow } from "./types";
+import type { Table as TableType, TableRow } from "./types";
 
 interface TableInterfaceProps {
   table: TableType;
@@ -18,11 +18,11 @@ interface TableInterfaceProps {
 const columnHelper = createColumnHelper<TableRow>();
 
 export default function TableInterface({ table }: TableInterfaceProps) {
-  const [data, setData] = useState<TableRow[]>(table.rows);
+  const [data] = useState<TableRow[]>(table.rows);
 
-  const columns = useMemo<ColumnDef<TableRow, any>[]>(() => {
+  const columns = useMemo<ColumnDef<TableRow, unknown>[]>(() => {
     // Add checkbox column
-    const cols: ColumnDef<TableRow, any>[] = [
+    const cols: ColumnDef<TableRow, unknown>[] = [
       columnHelper.display({
         id: "select",
         header: () => <div className="w-4 h-4" />,
@@ -35,7 +35,7 @@ export default function TableInterface({ table }: TableInterfaceProps) {
     table.columns.forEach((col) => {
       cols.push(
         columnHelper.accessor(
-          (row) => row.data[col.id] || "",
+          (row) => row.data[col.id] ?? "",
           {
             id: col.id,
             header: () => (
@@ -55,7 +55,7 @@ export default function TableInterface({ table }: TableInterfaceProps) {
               </div>
             ),
             cell: (info) => {
-              const value = info.getValue();
+              const value = info.getValue() as string;
               const columnName = col.name;
               
               // Show "Required field(s) are..." for Attachment Sum column when empty
@@ -70,7 +70,7 @@ export default function TableInterface({ table }: TableInterfaceProps) {
               
               return (
                 <div className="px-2 py-1 min-h-[24px] flex items-center">
-                  {value || ""}
+                  {value ?? ""}
                 </div>
               );
             },
@@ -176,9 +176,9 @@ export default function TableInterface({ table }: TableInterfaceProps) {
             ))}
           </thead>
           <tbody>
-            {tableInstance.getRowModel().rows.map((row, index) => (
+            {tableInstance.getRowModel().rows.map((row) => (
               <tr key={row.id} className="hover:bg-gray-50">
-                {row.getVisibleCells().map((cell, cellIndex) => (
+                {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
                     className="border-r border-gray-200 px-3 py-2 text-sm text-gray-900 first:border-l-0"

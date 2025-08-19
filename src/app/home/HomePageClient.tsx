@@ -32,12 +32,12 @@ export default function HomePageClient() {
     setIsRenameModalOpen(true);
   };
 
-  const handleRenameSuccess = () => {
-    refetch();
+  const handleRenameSuccess = async () => {
+    await refetch();
   };
 
-  const handleDelete = () => {
-    refetch();
+  const handleDelete = async () => {
+    await refetch();
   };
 
   return (
