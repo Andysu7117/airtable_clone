@@ -56,7 +56,7 @@ export async function GET() {
 
     const bases = await db.base.findMany({
       where: {
-        createdBy: { id: session.user.id },
+        ownerId: session.user.id,
       },
       include: {
         tables: {

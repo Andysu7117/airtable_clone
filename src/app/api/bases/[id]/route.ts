@@ -22,7 +22,7 @@ export async function DELETE(
     const existingBase = await db.base.findFirst({
       where: {
         id,
-        createdBy: { id: session.user.id },
+        ownerId: session.user.id,
       },
     });
 
