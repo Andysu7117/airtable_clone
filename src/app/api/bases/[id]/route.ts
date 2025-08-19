@@ -4,7 +4,7 @@ import { db } from "~/server/db";
 
 export async function DELETE(
   request: NextRequest,
-  { params }: any
+  { params }: {params: { id : string }}
 ) {
   try {
     const session = await auth();
