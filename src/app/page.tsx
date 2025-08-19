@@ -18,16 +18,25 @@ export default function SignInPage() {
   }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
-    console.log("Signing in email is " + email);
     e.preventDefault();
     setError(null);
+    
     const result = await signIn("credentials", {
       email,
       password,
-      callbackUrl: "/home",
+      redirect: false,
     });
-    if (result?.error) setError(result.error);
-    console.log("Done");
+    
+    if (result?.error) {
+      if (result.error === "CredentialsSignin") {
+        setError("Invalid email or password. Please try again.");
+      } else {
+        setError("An error occurred during sign in. Please try again.");
+      }
+    } else if (result?.ok) {
+      // Successful sign in, redirect to home
+      window.location.href = "/home";
+    }
   };
 
   return (
@@ -84,7 +93,42 @@ export default function SignInPage() {
             Sign in with <span className="font-medium">Single Sign On</span>
           </Link>
 
-          <form action="/api/auth/signin/google" method="POST">
+          <form 
+            action="/api/auth/signin/google" 
+            method="POST"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setError(null);
+              
+              try {
+                const formData = new FormData(e.currentTarget);
+                const response = await fetch("/api/auth/signin/google", {
+                  method: "POST",
+                  body: formData,
+                });
+                
+                if (response.redirected) {
+                  // Check if the redirect URL contains an error
+                  const url = new URL(response.url);
+                  if (url.searchParams.get("error")) {
+                    const error = url.searchParams.get("error");
+                    if (error === "OAuthAccountNotLinked") {
+                      setError("This email is already associated with a different account. Please sign in with your original method.");
+                    } else if (error === "AccessDenied") {
+                      setError("Access denied. Please try again.");
+                    } else {
+                      setError("An error occurred during Google sign in. Please try again.");
+                    }
+                  } else {
+                    // Successful sign in, redirect to home
+                    window.location.href = "/home";
+                  }
+                }
+              } catch (err) {
+                setError("An error occurred during Google sign in. Please try again.");
+              }
+            }}
+          >
             <input type="hidden" name="csrfToken" value={csrfToken ?? undefined} />
             <input type="hidden" name="callbackUrl" value="/home" />
             <button

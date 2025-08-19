@@ -1,31 +1,13 @@
 import { CheckCircle, X, Sparkles, Grid3X3, Upload, FileText, Plus } from "lucide-react";
 import BaseGrid from "../_components/BaseGrid";
 import Header from "../_components/Header";
-import { auth } from "~/server/auth";
-import { db } from "~/server/db";
-import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { requireAuth } from "../_components/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export default async function HomePage() {
-  const c = await cookies();
-  console.log("home cookie", c.get("authjs.session-token")?.value?.slice(0,20));
-  const session = await auth();
-  console.log("home session", session);
-  if (!session?.user) redirect("/");
-
-  // Ensure the user exists in DB (defensive in case of stale sessions)
-  const existingUser = await db.user.findFirst({
-    where: {
-      OR: [
-        { id: session.user.id },
-        { email: session.user.email ?? undefined },
-      ],
-    },
-  });
-  if (!existingUser) redirect("/");
+  const { session, user } = await requireAuth();
 
   const bases = [
     { id: "1", name: "Untitled Base", color: "green", lastOpened: "just now" },
