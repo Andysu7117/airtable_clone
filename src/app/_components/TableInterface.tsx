@@ -20,9 +20,9 @@ const columnHelper = createColumnHelper<TableRow>();
 export default function TableInterface({ table }: TableInterfaceProps) {
   const [data] = useState<TableRow[]>(table.rows);
 
-  const columns = useMemo<ColumnDef<TableRow, unknown>[]>(() => {
+  const columns = useMemo<ColumnDef<TableRow, string | number | null>[]>(() => {
     // Add checkbox column
-    const cols: ColumnDef<TableRow, unknown>[] = [
+    const cols: ColumnDef<TableRow, string | number | null>[] = [
       columnHelper.display({
         id: "select",
         header: () => <div className="w-4 h-4" />,
@@ -35,7 +35,7 @@ export default function TableInterface({ table }: TableInterfaceProps) {
     table.columns.forEach((col) => {
       cols.push(
         columnHelper.accessor(
-          (row) => row.data[col.id] ?? "",
+          (row): string => String(row.data[col.id] ?? ""),
           {
             id: col.id,
             header: () => (
@@ -55,7 +55,7 @@ export default function TableInterface({ table }: TableInterfaceProps) {
               </div>
             ),
             cell: (info) => {
-              const value = info.getValue() as string;
+              const value = info.getValue();
               const columnName = col.name;
               
               // Show "Required field(s) are..." for Attachment Sum column when empty
@@ -76,7 +76,7 @@ export default function TableInterface({ table }: TableInterfaceProps) {
             },
             size: 200,
           }
-        )
+        ) as ColumnDef<TableRow, string | number | null>
       );
     });
 
