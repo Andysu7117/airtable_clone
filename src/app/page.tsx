@@ -2,7 +2,7 @@
 import Link from "next/link";
 import React, { useState } from "react";
 // import { useRouter } from "next/navigation";
-import { signIn, getCsrfToken } from "next-auth/react";
+import { signIn } from "next-auth/react";
 // import { auth } from "~/server/auth";
 
 export default function SignInPage() {
@@ -10,12 +10,7 @@ export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [csrfToken, setCsrfToken] = useState<string | null>(null);
-
-  // Get CSRF token for custom Google form
-  React.useEffect(() => {
-    void (async () => setCsrfToken((await getCsrfToken()) ?? null))();
-  }, []);
+  
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,54 +88,16 @@ export default function SignInPage() {
             Sign in with <span className="font-medium">Single Sign On</span>
           </Link>
 
-          <form 
-            action="/api/auth/signin/google" 
-            method="POST"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setError(null);
-              
-              try {
-                const formData = new FormData(e.currentTarget);
-                const response = await fetch("/api/auth/signin/google", {
-                  method: "POST",
-                  body: formData,
-                });
-                
-                if (response.redirected) {
-                  // Check if the redirect URL contains an error
-                  const url = new URL(response.url);
-                  if (url.searchParams.get("error")) {
-                    const error = url.searchParams.get("error");
-                    if (error === "OAuthAccountNotLinked") {
-                      setError("This email is already associated with a different account. Please sign in with your original method.");
-                    } else if (error === "AccessDenied") {
-                      setError("Access denied. Please try again.");
-                    } else {
-                      setError("An error occurred during Google sign in. Please try again.");
-                    }
-                  } else {
-                    // Successful sign in, redirect to home
-                    window.location.href = "/home";
-                  }
-                }
-              } catch (err) {
-                setError("An error occurred during Google sign in. Please try again.");
-              }
-            }}
+          <button
+            type="button"
+            onClick={() => signIn("google", { callbackUrl: "/home" })}
+            className="flex w-full items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50"
           >
-            <input type="hidden" name="csrfToken" value={csrfToken ?? undefined} />
-            <input type="hidden" name="callbackUrl" value="/home" />
-            <button
-              type="submit"
-              className="flex w-full items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-800 hover:bg-gray-50"
-            >
-              <span>Sign in with Google</span>
-              {/* Using Next Image to satisfy lint rule */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img loading="lazy" src="https://authjs.dev/img/providers/google.svg" alt="Google" className="h-5 w-5 object-contain" />
-            </button>
-          </form>
+            <span>Sign in with Google</span>
+            {/* Using Next Image to satisfy lint rule */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img loading="lazy" src="https://authjs.dev/img/providers/google.svg" alt="Google" className="h-5 w-5 object-contain" />
+          </button>
 
           <button
             disabled

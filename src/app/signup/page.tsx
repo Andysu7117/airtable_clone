@@ -96,12 +96,13 @@ export default function SignupPage() {
             Continue with <span className="font-medium">Single Sign On</span>
           </Link>
 
-          <Link
-            href="/api/auth/signin/google"
+          <button
+            type="button"
+            onClick={() => signIn("google", { callbackUrl: "/home" })}
             className="block w-full rounded-md border border-gray-300 px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
           >
             <span className="mr-2">🟢</span> Continue with <span className="font-medium">Google</span>
-          </Link>
+          </button>
 
           <button
             disabled

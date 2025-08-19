@@ -29,9 +29,23 @@ import { db } from "~/server/db";
 export const createTRPCContext = async (opts: { headers: Headers }) => {
   const session = await auth();
 
+  // Normalize session so ctx.session.user.id always exists when logged in
+  let normalizedSession = session;
+  if (session?.user && !session.user.id) {
+    if (session.user.email) {
+      const existing = await db.user.findUnique({ where: { email: session.user.email } });
+      if (existing) {
+        normalizedSession = {
+          ...session,
+          user: { ...session.user, id: existing.id },
+        } as typeof session;
+      }
+    }
+  }
+
   return {
     db,
-    session,
+    session: normalizedSession,
     ...opts,
   };
 };
@@ -122,6 +136,10 @@ export const protectedProcedure = t.procedure
   .use(timingMiddleware)
   .use(({ ctx, next }) => {
     if (!ctx.session?.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+    if (!ctx.session.user.id) {
+      // If a session exists but no database user id is present, treat as unauthorized
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
     return next({
