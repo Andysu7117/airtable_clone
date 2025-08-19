@@ -1,47 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { api } from "~/trpc/react";
 
-interface CreateBaseModalProps {
+interface RenameBaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  base: {
+    id: string;
+    name: string;
+  } | null;
 }
 
-export default function CreateBaseModal({ isOpen, onClose, onSuccess }: CreateBaseModalProps) {
+export default function RenameBaseModal({ isOpen, onClose, onSuccess, base }: RenameBaseModalProps) {
   const [baseName, setBaseName] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
 
-  const createBase = api.base.create.useMutation({
+  const renameBase = api.base.rename.useMutation({
     onSuccess: () => {
       setBaseName("");
-      setIsCreating(false);
+      setIsRenaming(false);
       onSuccess();
       onClose();
     },
     onError: (error) => {
-      console.error("Error creating base:", error);
-      setIsCreating(false);
+      console.error("Error renaming base:", error);
+      setIsRenaming(false);
     },
   });
 
+  // Update base name when base changes
+  useEffect(() => {
+    if (base) {
+      setBaseName(base.name);
+    }
+  }, [base]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!baseName.trim() || isCreating) return;
+    if (!base || !baseName.trim() || isRenaming) return;
 
-    setIsCreating(true);
-    createBase.mutate({ name: baseName.trim() });
+    setIsRenaming(true);
+    renameBase.mutate({ id: base.id, name: baseName.trim() });
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !base) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
       <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Create a new base</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Rename base</h2>
           <button
             onClick={onClose}
             className="rounded-md p-1 text-gray-400 hover:text-gray-600"
@@ -77,10 +88,10 @@ export default function CreateBaseModal({ isOpen, onClose, onSuccess }: CreateBa
             </button>
             <button
               type="submit"
-              disabled={!baseName.trim() || isCreating}
+              disabled={!baseName.trim() || isRenaming}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isCreating ? "Creating..." : "Create base"}
+              {isRenaming ? "Renaming..." : "Rename"}
             </button>
           </div>
         </form>

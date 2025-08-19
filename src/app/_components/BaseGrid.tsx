@@ -22,14 +22,15 @@ interface Base {
 interface BaseGridProps {
   bases: Base[];
   onDelete: () => void;
+  onRename: (base: { id: string; name: string }) => void;
   onCreateClick: () => void;
 }
 
-export default function BaseGrid({ bases, onDelete, onCreateClick }: BaseGridProps) {
+export default function BaseGrid({ bases, onDelete, onRename, onCreateClick }: BaseGridProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
       {bases.map((base) => (
-        <BaseCard key={base.id} base={base} onDelete={onDelete} />
+        <BaseCard key={base.id} base={base} onDelete={onDelete} onRename={onRename} />
       ))}
       <NewBaseCard onClick={onCreateClick} />
     </div>

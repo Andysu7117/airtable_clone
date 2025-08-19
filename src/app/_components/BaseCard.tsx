@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
 import { api } from "~/trpc/react";
+import BaseActionsDropdown from "./BaseActionsDropdown";
 
 interface BaseCardProps {
   base: {
@@ -23,9 +23,10 @@ interface BaseCardProps {
     }>;
   };
   onDelete: () => void;
+  onRename: (base: { id: string; name: string }) => void;
 }
 
-export default function BaseCard({ base, onDelete }: BaseCardProps) {
+export default function BaseCard({ base, onDelete, onRename }: BaseCardProps) {
   const deleteBase = api.base.delete.useMutation({
     onSuccess: () => {
       onDelete();
@@ -35,13 +36,14 @@ export default function BaseCard({ base, onDelete }: BaseCardProps) {
     },
   });
 
-  const handleDelete = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
+  const handleDelete = () => {
     if (confirm(`Are you sure you want to delete "${base.name}"? This action cannot be undone.`)) {
       deleteBase.mutate(base.id);
     }
+  };
+
+  const handleRename = () => {
+    onRename({ id: base.id, name: base.name });
   };
 
   const getRandomColor = (id: string) => {
@@ -64,35 +66,37 @@ export default function BaseCard({ base, onDelete }: BaseCardProps) {
   };
 
   return (
-    <Link href={`/base/${base.id}`}>
-      <div className="rounded-xl shadow-sm bg-white hover:shadow-md transition-all duration-200 p-6 border border-gray-200 cursor-pointer group hover:border-gray-300 relative">
-        {/* Delete button */}
-        <button
-          onClick={handleDelete}
-          className="absolute top-3 right-3 p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all duration-200"
-          title="Delete base"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-
-        <div className={`w-12 h-12 ${getRandomColor(base.id)} rounded-lg mb-4 flex items-center justify-center`}>
-          <span className="text-white text-lg font-semibold">
-            {base.name.charAt(0).toUpperCase()}
-          </span>
-        </div>
-        
-        <h3 className="font-semibold text-gray-900 mb-2 group-hover:text-gray-700">
-          {base.name}
-        </h3>
-        
-        <p className="text-sm text-gray-500 mb-2">
-          {base.tables.length} table{base.tables.length === 1 ? '' : 's'}
-        </p>
-        
-        <p className="text-sm text-gray-500">
-          Updated {formatDate(base.updatedAt)}
-        </p>
+    <div className="rounded-xl shadow-sm bg-white hover:shadow-md transition-all duration-200 p-6 border border-gray-200 group hover:border-gray-300 relative">
+      {/* Actions dropdown */}
+      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        <BaseActionsDropdown
+          base={base}
+          onDelete={handleDelete}
+          onRename={handleRename}
+        />
       </div>
-    </Link>
+
+      <Link href={`/base/${base.id}`}>
+        <div className="cursor-pointer">
+          <div className={`w-12 h-12 ${getRandomColor(base.id)} rounded-lg mb-4 flex items-center justify-center`}>
+            <span className="text-white text-lg font-semibold">
+              {base.name.charAt(0).toUpperCase()}
+            </span>
+          </div>
+          
+          <h3 className="font-semibold text-gray-900 mb-2 group-hover:text-gray-700">
+            {base.name}
+          </h3>
+          
+          <p className="text-sm text-gray-500 mb-2">
+            {base.tables.length} table{base.tables.length === 1 ? '' : 's'}
+          </p>
+          
+          <p className="text-sm text-gray-500">
+            Updated {formatDate(base.updatedAt)}
+          </p>
+        </div>
+      </Link>
+    </div>
   );
 }

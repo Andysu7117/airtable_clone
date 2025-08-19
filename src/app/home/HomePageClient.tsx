@@ -4,15 +4,34 @@ import { CheckCircle, X, Sparkles, Grid3X3, Upload, FileText, Plus } from "lucid
 import { useState } from "react";
 import BaseGrid from "../_components/BaseGrid";
 import Header from "../_components/Header";
-import CreateBaseModal from "../_components/CreateBaseModal";
+import RenameBaseModal from "../_components/RenameBaseModal";
 import { api } from "~/trpc/react";
 
 export default function HomePageClient() {
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [baseToRename, setBaseToRename] = useState<{ id: string; name: string } | null>(null);
   
   const { data: bases = [], refetch } = api.base.getAll.useQuery();
   
-  const handleCreateSuccess = () => {
+  const createBase = api.base.create.useMutation({
+    onSuccess: () => {
+      refetch();
+    },
+    onError: (error) => {
+      console.error("Error creating base:", error);
+    },
+  });
+
+  const handleCreateClick = () => {
+    createBase.mutate();
+  };
+
+  const handleRename = (base: { id: string; name: string }) => {
+    setBaseToRename(base);
+    setIsRenameModalOpen(true);
+  };
+
+  const handleRenameSuccess = () => {
     refetch();
   };
 
@@ -96,7 +115,7 @@ export default function HomePageClient() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Opened anytime</h2>
             <button 
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={handleCreateClick}
               className="text-sm text-gray-500 hover:text-gray-700"
             >
               <Plus className="w-4 h-4" />
@@ -105,15 +124,17 @@ export default function HomePageClient() {
           <BaseGrid 
             bases={bases} 
             onDelete={handleDelete}
-            onCreateClick={() => setIsCreateModalOpen(true)}
+            onRename={handleRename}
+            onCreateClick={handleCreateClick}
           />
         </div>
       </main>
 
-      <CreateBaseModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onSuccess={handleCreateSuccess}
+      <RenameBaseModal
+        isOpen={isRenameModalOpen}
+        onClose={() => setIsRenameModalOpen(false)}
+        onSuccess={handleRenameSuccess}
+        base={baseToRename}
       />
     </div>
   );

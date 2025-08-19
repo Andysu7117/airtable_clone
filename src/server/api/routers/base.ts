@@ -3,13 +3,10 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 export const baseRouter = createTRPCRouter({
   create: protectedProcedure
-    .input(z.object({
-      name: z.string().min(1, "Base name is required"),
-    }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ ctx }) => {
       const base = await ctx.db.base.create({
         data: {
-          name: input.name.trim(),
+          name: "Untitled Base",
           owner: { connect: { id: ctx.session.user.id } },
           tables: {
             create: {
@@ -23,6 +20,38 @@ export const baseRouter = createTRPCRouter({
             },
           },
         },
+        include: {
+          tables: {
+            include: {
+              columns: true,
+            },
+          },
+        },
+      });
+      return base;
+    }),
+
+  rename: protectedProcedure
+    .input(z.object({
+      id: z.string(),
+      name: z.string().min(1, "Base name is required"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Check if the base belongs to the current user
+      const existingBase = await ctx.db.base.findFirst({
+        where: {
+          id: input.id,
+          owner: { id: ctx.session.user.id },
+        },
+      });
+
+      if (!existingBase) {
+        throw new Error("Base not found or access denied");
+      }
+
+      const base = await ctx.db.base.update({
+        where: { id: input.id },
+        data: { name: input.name.trim() },
         include: {
           tables: {
             include: {
