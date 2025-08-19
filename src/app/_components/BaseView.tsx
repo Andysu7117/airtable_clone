@@ -4,6 +4,7 @@ import { useState } from "react";
 import Sidebar from "./Sidebar";
 import TableHeader from "./TableHeader";
 import TableInterface from "./TableInterface";
+import Header from "./Header";
 import type { Base, Table } from "./types";
 
 interface BaseViewProps {
@@ -25,15 +26,19 @@ export default function BaseView({ base }: BaseViewProps) {
   }
 
   return (
-    <div className="flex h-screen">
-      <Sidebar 
-        selectedTable={selectedTable} 
-        onTableSelect={setSelectedTable} 
-      />
+    <div className="flex flex-col h-screen">
+      <Header baseName={base.name} />
       
-      <div className="flex-1 flex flex-col">
-        <TableHeader base={base} />
-        <TableInterface table={selectedTable} />
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar 
+          selectedTable={selectedTable} 
+          onTableSelect={setSelectedTable} 
+        />
+        
+        <div className="flex-1 flex flex-col">
+          <TableHeader base={base} />
+          <TableInterface table={selectedTable} />
+        </div>
       </div>
     </div>
   );

@@ -14,8 +14,9 @@ export default function HomePageClient() {
   const { data: bases = [], refetch } = api.base.getAll.useQuery();
   
   const createBase = api.base.create.useMutation({
-    onSuccess: () => {
-      refetch();
+    onSuccess: (newBase) => {
+      // Redirect to the newly created base page
+      window.location.href = `/base/${newBase.id}`;
     },
     onError: (error) => {
       console.error("Error creating base:", error);

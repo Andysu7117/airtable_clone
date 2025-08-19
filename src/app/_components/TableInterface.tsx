@@ -1,182 +1,219 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
-import { Plus, Type, Hash } from "lucide-react";
-import { faker } from "@faker-js/faker";
-import type { Column, Table, TableRow } from "./types";
+import { useState, useMemo } from "react";
+import {
+  useReactTable,
+  getCoreRowModel,
+  flexRender,
+  createColumnHelper,
+  type ColumnDef,
+} from "@tanstack/react-table";
+import { Eye, Filter, Group, ArrowUpDown, Palette, List, Share, Search, Plus, CheckSquare, Info } from "lucide-react";
+import type { Table as TableType, Column, TableRow } from "./types";
 
 interface TableInterfaceProps {
-  table: Table;
+  table: TableType;
 }
 
+const columnHelper = createColumnHelper<TableRow>();
+
 export default function TableInterface({ table }: TableInterfaceProps) {
-  const [columns, setColumns] = useState<Column[]>(table.columns);
-  const [rows, setRows] = useState<TableRow[]>(table.rows);
-  const [editingCell, setEditingCell] = useState<{ rowIndex: number; colIndex: number } | null>(null);
-  const [editingValue, setEditingValue] = useState<string>("");
+  const [data, setData] = useState<TableRow[]>(table.rows);
 
-  // Generate sample data
-  const generateData = useCallback((count: number) => {
-    const newRows: TableRow[] = [];
-    for (let i = 0; i < count; i++) {
-      const row: TableRow = {};
-      columns.forEach((col) => {
-        row[col.id] = col.type === "text" ? faker.lorem.words(2) : faker.number.int({ min: 1, max: 1000 });
-      });
-      newRows.push(row);
-    }
-    setRows(newRows);
-  }, [columns]);
+  const columns = useMemo<ColumnDef<TableRow, any>[]>(() => {
+    // Add checkbox column
+    const cols: ColumnDef<TableRow, any>[] = [
+      columnHelper.display({
+        id: "select",
+        header: () => <div className="w-4 h-4" />,
+        cell: () => <CheckSquare className="w-4 h-4 text-gray-400" />,
+        size: 50,
+      }),
+    ];
 
-  // Add column
-  const addColumn = () => {
-    const newColumn: Column = {
-      id: `col_${Date.now()}`,
-      name: `Column ${columns.length + 1}`,
-      type: "text"
-    };
-    setColumns([...columns, newColumn]);
-    setRows(rows.map(row => ({ ...row, [newColumn.id]: "" })));
-  };
-
-  // Add row
-  const addRow = () => {
-    const newRow: TableRow = {};
-    columns.forEach((col) => { newRow[col.id] = ""; });
-    setRows([...rows, newRow]);
-  };
-
-  // Cell editing
-  const startEditing = (rowIndex: number, colIndex: number, value: string) => {
-    setEditingCell({ rowIndex, colIndex });
-    setEditingValue(value);
-  };
-
-  const saveCell = () => {
-    if (editingCell && columns[editingCell.colIndex]) {
-      const column = columns[editingCell.colIndex];
-      if (column && editingCell.rowIndex < rows.length) {
-        const newRows = [...rows];
-        newRows[editingCell.rowIndex]![column.id] = editingValue;
-        setRows(newRows);
-        setEditingCell(null);
-        setEditingValue("");
-      }
-    }
-  };
-
-  // Generate initial data
-  useMemo(() => {
-    if (rows.length === 0) generateData(100);
-  }, [rows.length, generateData]);
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* Controls */}
-      <div className="p-4 border-b border-gray-200 bg-gray-50">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => generateData(100)}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-          >
-            Generate 100 Rows
-          </button>
-          <button
-            onClick={() => generateData(100000)}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
-          >
-            Generate 100k Rows
-          </button>
-          <span className="text-sm text-gray-600">
-            {rows.length.toLocaleString()} records
-          </span>
-        </div>
-      </div>
-
-      {/* Column Headers */}
-      <div className="flex border-b border-gray-200 bg-gray-50">
-        <div className="w-16 p-3 border-r border-gray-200 bg-gray-50 flex items-center justify-center">
-          <span className="text-sm font-medium text-gray-600">#</span>
-        </div>
-        
-        {columns.map((column) => (
-          <div key={column.id} className="flex-1 min-w-32 p-3 border-r border-gray-200 bg-gray-50">
-            <div className="flex items-center space-x-2">
-              {column.type === "text" ? (
-                <Type className="w-4 h-4 text-gray-500" />
-              ) : (
-                <Hash className="w-4 h-4 text-gray-500" />
-              )}
-              <span className="text-sm font-medium text-gray-900">{column.name}</span>
-            </div>
-          </div>
-        ))}
-        
-        <button onClick={addColumn} className="w-12 p-3 bg-gray-50 hover:bg-gray-100 flex items-center justify-center">
-          <Plus className="w-5 h-5 text-gray-500" />
-        </button>
-      </div>
-
-      {/* Table Rows */}
-      <div className="flex-1 overflow-auto">
-        {rows.slice(0, 1000).map((row, rowIndex) => (
-          <div key={rowIndex} className="flex border-b border-gray-200 hover:bg-gray-50">
-            <div className="w-16 p-3 border-r border-gray-200 bg-gray-50 flex items-center justify-center">
-              <span className="text-sm text-gray-600">{rowIndex + 1}</span>
-            </div>
-            
-            {columns.map((column, colIndex) => (
-              <div key={column.id} className="flex-1 min-w-32 p-3 border-r border-gray-200">
-                {editingCell?.rowIndex === rowIndex && editingCell?.colIndex === colIndex ? (
-                  <input
-                    type="text"
-                    value={editingValue}
-                    onChange={(e) => setEditingValue(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && saveCell()}
-                    onBlur={saveCell}
-                    className="w-full p-1 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    autoFocus
-                  />
-                ) : (
-                                     <div
-                     className="min-h-[24px] cursor-pointer hover:bg-blue-50 p-1 rounded"
-                     onClick={() => startEditing(rowIndex, colIndex, String(row[column.id] ?? ""))}
-                   >
-                                     <span className="text-sm text-gray-900">
-                   {String(row[column.id] ?? "")}
-                 </span>
+    // Add data columns
+    table.columns.forEach((col) => {
+      cols.push(
+        columnHelper.accessor(
+          (row) => row.data[col.id] || "",
+          {
+            id: col.id,
+            header: () => (
+              <div className="flex items-center space-x-2">
+                <span className="font-medium">{col.name}</span>
+                {col.isRequired && <span className="text-red-500">*</span>}
+                {col.name === "Notes" && <List className="w-4 h-4 text-gray-500" />}
+                {col.name === "Assignee" && <span className="text-blue-600 font-medium">A</span>}
+                {col.name === "Status" && <span className="text-gray-500">⏰</span>}
+                {col.name === "Attachments" && <span className="text-gray-500">📎</span>}
+                {col.name === "Attachment Sum" && (
+                  <div className="flex items-center space-x-1">
+                    <span className="text-gray-500">∑</span>
+                    <Info className="w-3 h-3 text-gray-400" />
                   </div>
                 )}
               </div>
-            ))}
-          </div>
-        ))}
+            ),
+            cell: (info) => {
+              const value = info.getValue();
+              const columnName = col.name;
+              
+              // Show "Required field(s) are..." for Attachment Sum column when empty
+              if (columnName === "Attachment Sum" && !value) {
+                return (
+                  <div className="flex items-center space-x-2 text-gray-500">
+                    <span className="text-sm">Required field(s) are...</span>
+                    <Info className="w-3 h-3" />
+                  </div>
+                );
+              }
+              
+              return (
+                <div className="px-2 py-1 min-h-[24px] flex items-center">
+                  {value || ""}
+                </div>
+              );
+            },
+            size: 200,
+          }
+        )
+      );
+    });
+
+    // Add new column button
+    cols.push(
+      columnHelper.display({
+        id: "addColumn",
+        header: () => (
+          <button className="p-1 hover:bg-gray-100 rounded">
+            <Plus className="w-4 h-4 text-gray-500" />
+          </button>
+        ),
+        cell: () => null,
+        size: 50,
+      })
+    );
+
+    return cols;
+  }, [table.columns]);
+
+  const tableInstance = useReactTable({
+    data,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center space-x-2">
+          <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+            <Eye className="w-4 h-4" />
+            <span>Hide fields</span>
+          </button>
+          <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+            <Filter className="w-4 h-4" />
+            <span>Filter</span>
+          </button>
+          <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+            <Group className="w-4 h-4" />
+            <span>Group</span>
+          </button>
+          <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+            <ArrowUpDown className="w-4 h-4" />
+            <span>Sort</span>
+          </button>
+          <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+            <Palette className="w-4 h-4" />
+            <span>Color</span>
+          </button>
+          <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+            <List className="w-4 h-4" />
+          </button>
+          <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+            <Share className="w-4 h-4" />
+            <span>Share and sync</span>
+          </button>
+        </div>
         
-        {rows.length > 1000 && (
-          <div className="p-4 text-center text-gray-500 border-b border-gray-200">
-            Showing first 1,000 of {rows.length.toLocaleString()} rows
+        <div className="flex items-center space-x-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search..."
+              className="pl-10 pr-4 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
           </div>
-        )}
-        
-        {/* Add row button */}
-        <div className="flex border-b border-gray-200">
-          <div className="w-16 p-3 border-r border-gray-200 bg-gray-50 flex items-center justify-center">
-            <button onClick={addRow} className="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center">
-              <Plus className="w-4 h-4 text-gray-500" />
-            </button>
-          </div>
-          <div className="flex-1 p-3">
-            <button onClick={addRow} className="text-sm text-gray-500 hover:text-gray-700 flex items-center">
-              <Plus className="w-4 h-4 mr-1" />
-              Add...
-            </button>
-          </div>
+          <button className="px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+            Tools
+          </button>
         </div>
       </div>
 
-      {/* Bottom Info */}
-      <div className="p-3 border-t border-gray-200 bg-gray-50">
-        <span className="text-sm text-gray-600">{rows.length.toLocaleString()} records</span>
+      {/* Table */}
+      <div className="flex-1 overflow-auto">
+        <table className="w-full border-collapse">
+          <thead className="bg-gray-50 sticky top-0">
+            {tableInstance.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th
+                    key={header.id}
+                    className="border-r border-gray-200 px-3 py-3 text-left text-sm font-medium text-gray-900 bg-gray-50 first:border-l-0"
+                    style={{ width: header.getSize() }}
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {tableInstance.getRowModel().rows.map((row, index) => (
+              <tr key={row.id} className="hover:bg-gray-50">
+                {row.getVisibleCells().map((cell, cellIndex) => (
+                  <td
+                    key={cell.id}
+                    className="border-r border-gray-200 px-3 py-2 text-sm text-gray-900 first:border-l-0"
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            
+            {/* Add new row button */}
+            <tr>
+              <td className="border-r border-gray-200 px-3 py-2 first:border-l-0">
+                <button className="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center">
+                  <Plus className="w-4 h-4 text-gray-500" />
+                </button>
+              </td>
+              <td colSpan={table.columns.length + 1} className="border-r border-gray-200 px-3 py-2">
+                <button className="flex items-center text-sm text-gray-500 hover:text-gray-700">
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add...
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Bottom Bar */}
+      <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 bg-gray-50">
+        <span className="text-sm text-gray-600">{data.length} records</span>
+        <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+          <Plus className="w-4 h-4" />
+          <span>Add...</span>
+        </button>
       </div>
     </div>
   );

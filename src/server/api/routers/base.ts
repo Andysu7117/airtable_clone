@@ -63,6 +63,35 @@ export const baseRouter = createTRPCRouter({
       return base;
     }),
 
+  getById: protectedProcedure
+    .input(z.string())
+    .query(async ({ ctx, input }) => {
+      const base = await ctx.db.base.findFirst({
+        where: {
+          id: input,
+          owner: { id: ctx.session.user.id },
+        },
+        include: {
+          tables: {
+            include: {
+              columns: {
+                orderBy: { order: "asc" },
+              },
+              records: {
+                orderBy: { createdAt: "asc" },
+              },
+            },
+          },
+        },
+      });
+
+      if (!base) {
+        throw new Error("Base not found or access denied");
+      }
+
+      return base;
+    }),
+
   getAll: protectedProcedure
     .query(async ({ ctx }) => {
       const bases = await ctx.db.base.findMany({

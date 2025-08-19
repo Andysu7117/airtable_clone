@@ -1,47 +1,60 @@
 import Link from "next/link";
-import { Search, HelpCircle, Bell } from "lucide-react";
+import { ChevronDown, Rocket, Share, HelpCircle, Bell } from "lucide-react";
 
-const Header = () => {
+interface HeaderProps {
+  baseName?: string;
+}
+
+const Header = ({ baseName = "Untitled Base" }: HeaderProps) => {
   return (
-    <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200">
-      {/* Left: Logo / Home */}
+    <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+      {/* Left: Logo and Base Name */}
       <div className="flex items-center space-x-4">
         <Link href="/home" className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-green-500 rounded flex items-center justify-center">
-            <span className="text-white text-sm font-bold">A</span>
+          <div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center">
+            <span className="text-white text-xs font-bold">A</span>
           </div>
-          <span className="font-semibold text-xl text-gray-800">Airtable</span>
         </Link>
-      </div>
-
-      {/* Center: Search */}
-      <div className="flex-1 max-w-md mx-8">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-          />
-          <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
-            ctrl K
-          </div>
+        
+        <div className="flex items-center space-x-2">
+          <span className="font-medium text-gray-900">{baseName}</span>
+          <ChevronDown className="w-4 h-4" />
         </div>
       </div>
 
-      {/* Right: Navigation */}
-      <nav className="flex items-center space-x-4">
-        <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
-          <HelpCircle className="w-5 h-5" />
+      {/* Center: Navigation Tabs */}
+      <div className="flex items-center space-x-8">
+        <button className="px-3 py-2 text-sm font-medium text-blue-600 border-b-2 border-blue-600">
+          Data
         </button>
-        <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+        <button className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
+          Automations
         </button>
-        <button className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center hover:bg-green-600">
-          <span className="text-white text-sm font-medium">A</span>
+        <button className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
+          Interfaces
         </button>
-      </nav>
+        <button className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
+          Forms
+        </button>
+      </div>
+
+      {/* Right: Actions */}
+      <div className="flex items-center space-x-4">
+        <button className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">
+          <Rocket className="w-4 h-4" />
+          <span>Launch</span>
+        </button>
+        
+        <span className="text-sm text-gray-500">Trial: 14 days left</span>
+        
+        <button className="text-sm text-blue-600 hover:text-blue-700">
+          See what&apos;s new
+        </button>
+        
+        <button className="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700">
+          Share
+        </button>
+      </div>
     </header>
   );
 };
