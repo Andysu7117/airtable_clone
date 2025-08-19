@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { db } from "~/server/db";
 import bcrypt from "bcryptjs";
 
+interface UserData {
+  id: string;
+  email: string | null;
+  authProvider?: string | null;
+  passwordHash?: string | null;
+}
+
 export async function POST(req: Request) {
   try {
     const { email, password } = (await req.json()) as {
@@ -13,7 +20,7 @@ export async function POST(req: Request) {
     }
 
     const raw = await db.user.findUnique({ where: { email } });
-    const user = raw as unknown as { id: string; email: string | null; authProvider?: string | null; passwordHash?: string | null } | null;
+    const user = raw as UserData | null;
     if (!user || user.authProvider === "GOOGLE") {
       return NextResponse.json({ message: "Account not available for password sign-in" }, { status: 401 });
     }

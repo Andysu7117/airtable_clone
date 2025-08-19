@@ -8,6 +8,20 @@ import { db } from "~/server/db";
 
 const safeAdapter: Adapter = PrismaAdapter(db) as Adapter;
 
+interface UserWithAuthProvider {
+  id: string;
+  email: string | null;
+  name: string | null;
+  image: string | null;
+  authProvider?: string | null;
+  passwordHash?: string | null;
+}
+
+interface TokenWithId {
+  id?: string;
+  sub?: string;
+}
+
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`
  * object and keep type safety.
@@ -56,18 +70,18 @@ export const authConfig = {
         console.log("authorize user", user?.id, user?.email);
         if (!user) return null;
         try {
-          const userAuthProvider = (user as unknown as { authProvider?: string | null }).authProvider;
+          const userAuthProvider = (user as UserWithAuthProvider).authProvider;
           if (userAuthProvider === "GOOGLE") return null;
         } catch {
           // field absent in types; ignore
         }
-        const passwordHash = (user as unknown as { passwordHash?: string | null }).passwordHash;
+        const passwordHash = (user as UserWithAuthProvider).passwordHash;
         if (!passwordHash) return null;
-        const { default: bcryptDefault } = (await import("bcryptjs")) as unknown as { default?: { compare: (a: string, b: string) => Promise<boolean> } };
+        const { default: bcryptDefault } = (await import("bcryptjs")) as { default?: { compare: (a: string, b: string) => Promise<boolean> } };
         const compare = (bcryptDefault?.compare ?? (await import("bcryptjs")).compare) as (a: string, b: string) => Promise<boolean>;
         const ok = await compare(credentials.password as string, passwordHash);
         if (!ok) return null;
-        return { id: user.id, email: user.email, name: user.name ?? undefined, image: (user as unknown as { image?: string | null }).image ?? undefined } as unknown as { id: string; email?: string | null; name?: string | null; image?: string | null };
+        return { id: user.id, email: user.email, name: user.name ?? undefined, image: (user as UserWithAuthProvider).image ?? undefined } as { id: string; email?: string | null; name?: string | null; image?: string | null };
       },
     }),
   ],
@@ -87,11 +101,11 @@ export const authConfig = {
       return true;
     },
     async jwt({ token, user }) {
-      console.log("jwt in", { hasUser: !!user, tokenSub: token.sub, tokenId: (token as { id?: string }).id });
+      console.log("jwt in", { hasUser: !!user, tokenSub: token.sub, tokenId: (token as TokenWithId).id });
       if (user) {
         
         // persist user id on token for session mapping
-        (token as { id?: string }).id = (user as { id: string }).id;
+        (token as TokenWithId).id = (user as { id: string }).id;
       }
       console.log("jwt out", token);
       return token;
@@ -100,7 +114,7 @@ export const authConfig = {
       ...session,
       user: {
         ...session.user,
-        id: ((user as { id?: string })?.id ?? (token as { id?: string })?.id ?? token.sub!),
+        id: ((user as { id?: string })?.id ?? (token as TokenWithId)?.id ?? token.sub!),
       },
     }),
   },
@@ -111,7 +125,7 @@ export const authConfig = {
         .update({
           where: { id: user.id },
           // Cast data because generated types may not include the custom field yet
-          data: { authProvider: "GOOGLE" } as unknown as Record<string, unknown>,
+          data: { authProvider: "GOOGLE" },
         })
         .catch(() => undefined);
     },

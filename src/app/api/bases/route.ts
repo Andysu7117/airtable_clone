@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
 
@@ -9,7 +10,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { name } = await request.json();
+    const body = await request.json() as { name?: string };
+    const { name } = body;
     
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return NextResponse.json({ error: "Base name is required" }, { status: 400 });
