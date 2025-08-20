@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { Prisma, ColumnType } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 export const baseRouter = createTRPCRouter({
@@ -133,5 +135,180 @@ export const baseRouter = createTRPCRouter({
       });
 
       return { message: "Base deleted successfully" };
+    }),
+
+  // Tables
+  createTable: protectedProcedure
+    .input(z.object({ baseId: z.string(), name: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const base = await ctx.db.base.findFirst({
+        where: { id: input.baseId, owner: { id: ctx.session.user.id } },
+      });
+      if (!base) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const table = await ctx.db.table.create({
+        data: {
+          name: input.name?.trim() || "Untitled Table",
+          baseId: base.id,
+          columns: {
+            create: [
+              { name: "Name", type: "TEXT", order: 0 },
+              { name: "Notes", type: "TEXT", order: 1 },
+            ],
+          },
+        },
+        include: { columns: true },
+      });
+
+      const blankData: Prisma.JsonObject = Object.fromEntries(
+        table.columns.map((c) => [c.id, ""]),
+      );
+      await ctx.db.record.createMany({
+        data: [1, 2, 3].map(() => ({ tableId: table.id, data: blankData })),
+      });
+
+      return table;
+    }),
+
+  deleteTable: protectedProcedure
+    .input(z.object({ tableId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const table = await ctx.db.table.findFirst({
+        where: { id: input.tableId, base: { owner: { id: ctx.session.user.id } } },
+        select: { id: true },
+      });
+      if (!table) throw new TRPCError({ code: "NOT_FOUND" });
+      await ctx.db.table.delete({ where: { id: table.id } });
+      return { message: "Table deleted" };
+    }),
+
+  // Columns
+  createColumn: protectedProcedure
+    .input(z.object({
+      tableId: z.string(),
+      name: z.string().min(1),
+      type: z.nativeEnum(ColumnType).default(ColumnType.TEXT),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const found = await ctx.db.table.findFirst({
+        where: { id: input.tableId, base: { owner: { id: ctx.session.user.id } } },
+        include: { columns: { select: { order: true } } },
+      });
+      if (!found) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const maxOrder = found.columns.reduce((m, c) => Math.max(m, c.order), -1);
+      const column = await ctx.db.column.create({
+        data: {
+          tableId: input.tableId,
+          name: input.name.trim(),
+          type: input.type,
+          order: maxOrder + 1,
+        },
+      });
+
+      const records = await ctx.db.record.findMany({
+        where: { tableId: input.tableId },
+        select: { id: true, data: true },
+      });
+      await Promise.all(
+        records.map((r) =>
+          ctx.db.record.update({
+            where: { id: r.id },
+            data: {
+              data: {
+                ...(r.data as Prisma.JsonObject),
+                [column.id]: "",
+              } as Prisma.JsonObject,
+            },
+          }),
+        ),
+      );
+
+      return column;
+    }),
+
+  deleteColumn: protectedProcedure
+    .input(z.object({ columnId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const column = await ctx.db.column.findFirst({
+        where: { id: input.columnId, table: { base: { owner: { id: ctx.session.user.id } } } },
+        select: { id: true, tableId: true },
+      });
+      if (!column) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const records = await ctx.db.record.findMany({
+        where: { tableId: column.tableId },
+        select: { id: true, data: true },
+      });
+      await Promise.all(
+        records.map((r) => {
+          const data = { ...(r.data as Prisma.JsonObject) };
+          delete (data as Record<string, unknown>)[input.columnId];
+          return ctx.db.record.update({ where: { id: r.id }, data: { data } });
+        }),
+      );
+
+      await ctx.db.column.delete({ where: { id: input.columnId } });
+      return { message: "Column deleted" };
+    }),
+
+  // Records
+  createRecord: protectedProcedure
+    .input(z.object({ tableId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const table = await ctx.db.table.findFirst({
+        where: { id: input.tableId, base: { owner: { id: ctx.session.user.id } } },
+        include: { columns: true },
+      });
+      if (!table) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const data: Prisma.JsonObject = Object.fromEntries(
+        table.columns.map((c) => [c.id, ""]),
+      );
+
+      const record = await ctx.db.record.create({
+        data: { tableId: table.id, data },
+      });
+      return record;
+    }),
+
+  deleteRecord: protectedProcedure
+    .input(z.object({ recordId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const record = await ctx.db.record.findFirst({
+        where: { id: input.recordId, table: { base: { owner: { id: ctx.session.user.id } } } },
+        select: { id: true },
+      });
+      if (!record) throw new TRPCError({ code: "NOT_FOUND" });
+      await ctx.db.record.delete({ where: { id: input.recordId } });
+      return { message: "Record deleted" };
+    }),
+
+  updateRecord: protectedProcedure
+    .input(z.object({
+      recordId: z.string(),
+      values: z.record(z.string(), z.string()),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const record = await ctx.db.record.findFirst({
+        where: { id: input.recordId, table: { base: { owner: { id: ctx.session.user.id } } } },
+        include: { table: { include: { columns: { select: { id: true } } } } },
+      });
+      if (!record) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const allowed = new Set(record.table.columns.map((c) => c.id));
+      const sanitizedEntries = Object.entries(input.values).filter(([k]) =>
+        allowed.has(k),
+      );
+      const nextData: Prisma.JsonObject = {
+        ...(record.data as Prisma.JsonObject),
+        ...Object.fromEntries(sanitizedEntries),
+      } as Prisma.JsonObject;
+
+      const updated = await ctx.db.record.update({
+        where: { id: record.id },
+        data: { data: nextData },
+      });
+      return updated;
     }),
 });
