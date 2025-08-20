@@ -10,15 +10,25 @@ import {
 } from "@tanstack/react-table";
 import { Eye, Filter, Group, ArrowUpDown, Palette, List, Share, Search, Plus, CheckSquare, Info } from "lucide-react";
 import type { Table as TableType, TableRow } from "./types";
+import { api } from "~/trpc/react";
 
 interface TableInterfaceProps {
+  baseId: string;
   table: TableType;
+  onChanged?: () => void;
 }
 
 const columnHelper = createColumnHelper<TableRow>();
 
-export default function TableInterface({ table }: TableInterfaceProps) {
-  const [data] = useState<TableRow[]>(table.rows);
+export default function TableInterface({ baseId, table, onChanged }: TableInterfaceProps) {
+  const [data, setData] = useState<TableRow[]>(table.rows);
+
+  const utils = api.useContext();
+  const createColumn = api.base.createColumn.useMutation({ onSuccess: async () => { await utils.base.getById.invalidate(baseId); onChanged?.(); } });
+  const deleteColumn = api.base.deleteColumn.useMutation({ onSuccess: async () => { await utils.base.getById.invalidate(baseId); onChanged?.(); } });
+  const createRecord = api.base.createRecord.useMutation({ onSuccess: async () => { await utils.base.getById.invalidate(baseId); onChanged?.(); } });
+  const deleteRecord = api.base.deleteRecord.useMutation({ onSuccess: async () => { await utils.base.getById.invalidate(baseId); onChanged?.(); } });
+  const updateRecord = api.base.updateRecord.useMutation();
 
   const columns = useMemo<ColumnDef<TableRow, string | number | null>[]>(() => {
     // Add checkbox column
@@ -56,22 +66,31 @@ export default function TableInterface({ table }: TableInterfaceProps) {
             ),
             cell: (info) => {
               const value = info.getValue();
-              const columnName = col.name;
-              
-              // Show "Required field(s) are..." for Attachment Sum column when empty
-              if (columnName === "Attachment Sum" && !value) {
+              const onChange = async (v: string) => {
+                const recordId = info.row.original.id;
+                await updateRecord.mutateAsync({ recordId, values: { [col.id]: v } });
+                await utils.base.getById.invalidate(baseId);
+                onChanged?.();
+              };
+
+              if ((col.type === "NUMBER" || col.type === "number")) {
                 return (
-                  <div className="flex items-center space-x-2 text-gray-500">
-                    <span className="text-sm">Required field(s) are...</span>
-                    <Info className="w-3 h-3" />
-                  </div>
+                  <input
+                    type="number"
+                    defaultValue={value ? Number(value) : undefined}
+                    onBlur={(e) => onChange(e.currentTarget.value)}
+                    className="px-2 py-1 w-full bg-transparent outline-none"
+                  />
                 );
               }
-              
               return (
-                <div className="px-2 py-1 min-h-[24px] flex items-center">
-                  {value ?? ""}
-                </div>
+                <input
+                  type="text"
+                  defaultValue={value ? String(value) : ""}
+                  onBlur={(e) => onChange(e.currentTarget.value)}
+                  placeholder=""
+                  className="px-2 py-1 w-full bg-transparent outline-none"
+                />
               );
             },
             size: 200,
@@ -85,7 +104,12 @@ export default function TableInterface({ table }: TableInterfaceProps) {
       columnHelper.display({
         id: "addColumn",
         header: () => (
-          <button className="p-1 hover:bg-gray-100 rounded">
+          <button
+            onClick={async () => {
+              await createColumn.mutateAsync({ tableId: table.id, name: `Field ${table.columns.length + 1}` });
+            }}
+            className="p-1 hover:bg-gray-100 rounded"
+          >
             <Plus className="w-4 h-4 text-gray-500" />
           </button>
         ),
@@ -192,7 +216,12 @@ export default function TableInterface({ table }: TableInterfaceProps) {
             {/* Add new row button */}
             <tr>
               <td className="border-r border-gray-200 px-3 py-2 first:border-l-0">
-                <button className="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center">
+                <button
+                  onClick={async () => {
+                    await createRecord.mutateAsync({ tableId: table.id });
+                  }}
+                  className="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
+                >
                   <Plus className="w-4 h-4 text-gray-500" />
                 </button>
               </td>

@@ -3,15 +3,28 @@
 import { useState } from "react";
 import { ChevronDown, Plus, Menu, Grid3X3, Search, Settings, HelpCircle, Bell, User } from "lucide-react";
 import type { Table } from "./types";
+import { api } from "~/trpc/react";
 
 interface SidebarProps {
+  baseId: string;
+  tables: Table[];
   selectedTable: Table;
   onTableSelect: (table: Table) => void;
+  onChanged?: () => void;
 }
 
-export default function Sidebar({ selectedTable, onTableSelect }: SidebarProps) {
+export default function Sidebar({ baseId, tables, selectedTable, onTableSelect, onChanged }: SidebarProps) {
   const [isTableDropdownOpen, setIsTableDropdownOpen] = useState(false);
   const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
+  const utils = api.useContext();
+  const createTable = api.base.createTable.useMutation({
+    onSuccess: async (t) => {
+      await utils.base.getById.invalidate(baseId);
+      onChanged?.();
+      // After refetch, optimistic selection to the new table
+      onTableSelect({ ...t, columns: t.columns.map((c) => ({ ...c, type: c.type as unknown as "TEXT" | "NUMBER", isRequired: false })), rows: [] });
+    },
+  });
 
   return (
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
@@ -29,17 +42,26 @@ export default function Sidebar({ selectedTable, onTableSelect }: SidebarProps) 
           {isTableDropdownOpen && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-10">
               <div className="py-1">
-                <button className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100">
-                  {selectedTable.name}
-                </button>
+                {tables.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => { onTableSelect(t); setIsTableDropdownOpen(false); }}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 ${t.id === selectedTable.id ? "text-blue-600 bg-blue-50" : "text-gray-700"}`}
+                  >
+                    {t.name}
+                  </button>
+                ))}
               </div>
             </div>
           )}
         </div>
         
-        <button className="flex items-center space-x-2 w-full mt-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md">
+        <button
+          onClick={() => createTable.mutate({ baseId })}
+          className="flex items-center space-x-2 w-full mt-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+        >
           <Plus className="w-4 h-4" />
-          <span>Add or import</span>
+          <span>Add table</span>
         </button>
       </div>
 

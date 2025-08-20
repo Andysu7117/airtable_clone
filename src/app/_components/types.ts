@@ -1,7 +1,7 @@
 export interface Column {
   id: string;
   name: string;
-  type: "text" | "number";
+  type: "TEXT" | "NUMBER" | "text" | "number";
   order: number;
   isRequired: boolean;
 }
