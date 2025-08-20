@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { Prisma, ColumnType } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import { ColumnType } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 export const baseRouter = createTRPCRouter({
@@ -148,7 +149,7 @@ export const baseRouter = createTRPCRouter({
 
       const table = await ctx.db.table.create({
         data: {
-          name: input.name?.trim() || "Untitled Table",
+          name: (input.name ?? "Untitled Table").trim(),
           baseId: base.id,
           columns: {
             create: [
