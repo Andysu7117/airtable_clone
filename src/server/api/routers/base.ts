@@ -285,6 +285,22 @@ export const baseRouter = createTRPCRouter({
       return updated;
     }),
 
+  updateColumnType: protectedProcedure
+    .input(z.object({ columnId: z.string(), type: z.nativeEnum(ColumnType) }))
+    .mutation(async ({ ctx, input }) => {
+      const column = await ctx.db.column.findFirst({
+        where: { id: input.columnId, table: { base: { owner: { id: ctx.session.user.id } } } },
+        select: { id: true },
+      });
+      if (!column) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const updated = await ctx.db.column.update({
+        where: { id: input.columnId },
+        data: { type: input.type },
+      });
+      return updated;
+    }),
+
   // Records
   createRecord: protectedProcedure
     .input(z.object({ tableId: z.string() }))

@@ -8,7 +8,7 @@ import {
   createColumnHelper,
   type ColumnDef,
 } from "@tanstack/react-table";
-import { Eye, Filter, Group, ArrowUpDown, Palette, List, Share, Search, Plus, CheckSquare, Info, Trash2 } from "lucide-react";
+import { Eye, Filter, Group, ArrowUpDown, Palette, List, Share, Search, Plus, CheckSquare, Info, Trash2, ChevronDown, Type, Hash } from "lucide-react";
 import type { Table as TableType, TableRow } from "./types";
 import { api } from "~/trpc/react";
 
@@ -22,12 +22,15 @@ interface EditableHeaderProps {
   value: string;
   onSave: (newValue: string) => void;
   onDelete?: () => void;
+  onTypeChange?: (newType: "TEXT" | "NUMBER") => void;
+  currentType: "TEXT" | "NUMBER";
   className?: string;
 }
 
-function EditableHeader({ value, onSave, onDelete, className }: EditableHeaderProps) {
+function EditableHeader({ value, onSave, onDelete, onTypeChange, currentType, className }: EditableHeaderProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const handleDoubleClick = () => {
     setIsEditing(true);
@@ -69,15 +72,73 @@ function EditableHeader({ value, onSave, onDelete, className }: EditableHeaderPr
       <span onDoubleClick={handleDoubleClick} className="cursor-pointer select-none">
         {value}
       </span>
-      {onDelete && (
+      
+      {/* Column Options Dropdown */}
+      <div className="relative">
         <button
-          onClick={onDelete}
-          className="p-1 hover:bg-red-100 rounded text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Delete column"
+          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+          className="p-1 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-700"
+          title="Column options"
         >
-          <Trash2 className="w-3 h-3" />
+          <ChevronDown className="w-3 h-3" />
         </button>
-      )}
+        
+        {isDropdownOpen && (
+          <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-20 min-w-48">
+            <div className="py-1">
+              {/* Column Type Options */}
+              <div className="px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide border-b border-gray-200">
+                Column Type
+              </div>
+              <button
+                onClick={() => {
+                  if (onTypeChange && currentType !== "TEXT") {
+                    onTypeChange("TEXT");
+                  }
+                  setIsDropdownOpen(false);
+                }}
+                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2 ${
+                  currentType === "TEXT" ? "text-blue-600 bg-blue-50" : "text-gray-700"
+                }`}
+              >
+                <Type className="w-4 h-4" />
+                <span>Text</span>
+              </button>
+              <button
+                onClick={() => {
+                  if (onTypeChange && currentType !== "NUMBER") {
+                    onTypeChange("NUMBER");
+                  }
+                  setIsDropdownOpen(false);
+                }}
+                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2 ${
+                  currentType === "NUMBER" ? "text-blue-600 bg-blue-50" : "text-gray-700"
+                }`}
+              >
+                <Hash className="w-4 h-4" />
+                <span>Number</span>
+              </button>
+              
+              {/* Divider */}
+              <div className="border-t border-gray-200 my-1"></div>
+              
+              {/* Delete Option */}
+              {onDelete && (
+                <button
+                  onClick={() => {
+                    onDelete();
+                    setIsDropdownOpen(false);
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete column</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -129,6 +190,13 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     }
   });
 
+  const updateColumnType = api.base.updateColumnType.useMutation({
+    onSuccess: async () => {
+      await utils.base.getById.invalidate(baseId);
+      onChanged?.();
+    }
+  });
+
   const columns = useMemo<ColumnDef<TableRow, string | number | null>[]>(() => {
     // Add checkbox column
     const cols: ColumnDef<TableRow, string | number | null>[] = [
@@ -151,12 +219,20 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
               <div className="flex items-center space-x-2 group">
                 <EditableHeader
                   value={col.name}
+                  currentType={col.type === "text" || col.type === "number" ? (col.type === "number" ? "NUMBER" : "TEXT") : col.type}
                   onSave={async (newName) => {
                     await renameColumn.mutateAsync({ columnId: col.id, name: newName });
                   }}
                   onDelete={async () => {
                     if (confirm(`Are you sure you want to delete the column "${col.name}"?`)) {
                       await deleteColumn.mutateAsync({ columnId: col.id });
+                    }
+                  }}
+                  onTypeChange={async (newType) => {
+                    try {
+                      await updateColumnType.mutateAsync({ columnId: col.id, type: newType });
+                    } catch (error) {
+                      console.error('Failed to update column type:', error);
                     }
                   }}
                   className="font-medium"
@@ -217,6 +293,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
               await createColumn.mutateAsync({ tableId: table.id, name: `Field ${table.columns.length + 1}` });
             }}
             className="p-1 hover:bg-gray-100 rounded"
+            title="Add new column"
           >
             <Plus className="w-4 h-4 text-gray-500" />
           </button>
@@ -227,7 +304,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     );
 
     return cols;
-  }, [table.columns, table.id, createColumn, renameColumn, deleteColumn, updateRecord, utils.base.getById, baseId, onChanged]);
+  }, [table.columns, table.id, createColumn, renameColumn, deleteColumn, updateRecord, updateColumnType, utils.base.getById, baseId, onChanged]);
 
   const tableInstance = useReactTable({
     data: table.rows,
@@ -260,7 +337,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
             <Palette className="w-4 h-4" />
             <span>Color</span>
           </button>
-          <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+          <button className="flex items-center space-x-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
             <List className="w-4 h-4" />
           </button>
           <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
