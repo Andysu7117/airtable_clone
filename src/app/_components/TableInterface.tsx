@@ -189,11 +189,23 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     editingCellsRef.current = editingCells;
   }, [editingCells]);
   
-  // Update optimistic table when prop changes
+  // Update optimistic table when prop changes, but avoid clobbering local optimistic values
   useEffect(() => {
-    setOptimisticTable(table);
-    // Clear editing state when table changes to prevent stale state
-    setEditingCells(new Map());
+    setOptimisticTable((prev) => {
+      if (!prev) return table;
+      if (prev.id !== table.id) return table; // switched tables
+
+      const prevColIds = prev.columns.map((c) => c.id).join(",");
+      const nextColIds = table.columns.map((c) => c.id).join(",");
+      const prevRowIds = prev.rows.map((r) => r.id).join(",");
+      const nextRowIds = table.rows.map((r) => r.id).join(",");
+
+      // If structure changed (add/remove/reorder), resync; otherwise keep optimistic values
+      if (prevColIds !== nextColIds || prevRowIds !== nextRowIds) {
+        return table;
+      }
+      return prev;
+    });
   }, [table]);
 
   // Ensure stable row ordering by maintaining original positions
@@ -244,7 +256,12 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
   });
   
   const updateRecord = api.base.updateRecord.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      // Merge server-confirmed values into the optimistic table
+      setOptimisticTable(prev => ({
+        ...prev,
+        rows: prev.rows.map(r => r.id === updated.id ? { ...r, data: updated.data as Record<string, string | number | null> } : r)
+      }));
       await utils.base.getById.invalidate(baseId);
       onChanged?.();
     }
@@ -491,6 +508,31 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     });
   };
 
+  // Apply a local optimistic edit as the user types (no server call)
+  const applyLocalRecordEdit = (recordId: string, columnId: string, value: string, columnType: "TEXT" | "NUMBER" | "text" | "number") => {
+    let processedValue: string | number | null = value;
+    const isNumber = columnType === "NUMBER" || columnType === "number";
+    if (isNumber) {
+      if (value === "" || value == null) {
+        processedValue = null;
+      } else {
+        const n = Number(value);
+        if (Number.isNaN(n)) {
+          // For invalid numbers, do not update the table yet
+          return;
+        }
+        processedValue = n;
+      }
+    }
+    setOptimisticTable(prev => ({
+      ...prev,
+      rows: prev.rows.map(row => row.id === recordId ? {
+        ...row,
+        data: { ...row.data, [columnId]: processedValue }
+      } : row)
+    }));
+  };
+
   // Memoize stable, sorted data to avoid remounts on each render
   const stableData = useMemo(() => getStableRows(optimisticTable.rows), [optimisticTable.rows, table.rows]);
 
@@ -505,6 +547,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
   const CellEditor: React.FC<CellEditorProps> = ({ recordId, columnId, initialValue, columnType, onCommit }) => {
     const [value, setValue] = useState<string>(initialValue == null ? "" : String(initialValue));
     const [isFocused, setIsFocused] = useState(false);
+    const skipCommitOnBlurRef = useRef(false);
 
     // Sync when initialValue changes from outside and the input is not focused
     useEffect(() => {
@@ -514,17 +557,28 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     }, [initialValue, isFocused]);
 
     const handleBlur = async () => {
+      if (skipCommitOnBlurRef.current) {
+        skipCommitOnBlurRef.current = false;
+        setIsFocused(false);
+        return;
+      }
       await onCommit(value);
       setIsFocused(false);
     };
 
     const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") {
+        e.preventDefault();
+        const inputEl = e.currentTarget;
+        skipCommitOnBlurRef.current = true;
         await onCommit(value);
-        (e.currentTarget as HTMLInputElement).blur();
+        inputEl?.blur();
       } else if (e.key === "Escape") {
+        e.preventDefault();
+        const inputEl = e.currentTarget;
         setValue(initialValue == null ? "" : String(initialValue));
-        (e.currentTarget as HTMLInputElement).blur();
+        skipCommitOnBlurRef.current = true;
+        inputEl?.blur();
       }
     };
 
@@ -535,7 +589,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
         type={isNumber ? "number" : "text"}
         value={value}
         onFocus={() => setIsFocused(true)}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => { const v = e.target.value; setValue(v); applyLocalRecordEdit(recordId, columnId, v, columnType); }}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         className="px-2 py-1 w-full bg-transparent outline-none focus:bg-white focus:border focus:border-blue-300 rounded"
@@ -615,11 +669,10 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
               // Get the current value for this cell
               const editingKey = `${recordId}-${columnId}`;
               const editingMap = editingCellsRef.current;
-              const baseRow = stableData.find(r => r.id === recordId) ?? info.row.original;
-              const baseValue = baseRow?.data[columnId] ?? "";
+              const baseValueFromAccessor = value ?? "";
               const currentValue = editingMap.has(editingKey)
                 ? editingMap.get(editingKey) || ""
-                : (baseValue ?? "");
+                : (baseValueFromAccessor as string);
 
               // Use the optimistic column type for immediate UI updates
               const currentColumn = optimisticTable.columns.find(c => c.id === col.id);
