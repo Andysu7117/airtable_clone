@@ -8,6 +8,7 @@ import {
   createColumnHelper,
   type ColumnDef,
 } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Eye, Filter, Group, ArrowUpDown, Palette, List, Share, Search, Plus, CheckSquare, Info, Trash2, ChevronDown, Type, Hash } from "lucide-react";
 import type { Table as TableType, TableRow } from "./types";
 import { api } from "~/trpc/react";
@@ -536,6 +537,63 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
   // Memoize stable, sorted data to avoid remounts on each render
   const stableData = useMemo(() => getStableRows(optimisticTable.rows), [optimisticTable.rows, table.rows]);
 
+  // Data virtualization + pagination
+  const parentRef = useRef<HTMLDivElement | null>(null);
+  const [recordPages, setRecordPages] = useState<{ items: { id: string; data: Record<string, string | number | null> }[]; nextCursor: string | null }[]>([]);
+  const [fetchingMore, setFetchingMore] = useState(false);
+
+  const flatRecords = useMemo(() => {
+    // Use optimisticTable for current page; fallback to fetched pages
+    const optimisticMap = new Map(optimisticTable.rows.map(r => [r.id, r] as const));
+    const paged: { id: string; data: Record<string, string | number | null> }[] = [];
+    for (const page of recordPages) {
+      for (const rec of page.items) {
+        const opt = optimisticMap.get(rec.id);
+        paged.push({ id: rec.id, data: (opt?.data ?? rec.data) as Record<string, string | number | null> });
+      }
+    }
+    // Include any optimistic-only rows (e.g., just-added) that aren't in pages yet
+    for (const r of optimisticTable.rows) {
+      if (!paged.find(p => p.id === r.id)) paged.push({ id: r.id, data: r.data });
+    }
+    return paged;
+  }, [recordPages, optimisticTable.rows]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: flatRecords.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 36,
+    overscan: 12,
+  });
+
+  // Fetch pages
+  const listRecords = api.base.listRecords.useInfiniteQuery(
+    { tableId: optimisticTable.id, limit: 1000 },
+    {
+      getNextPageParam: (last) => last?.nextCursor ?? undefined,
+      onSuccess: (data) => {
+        setRecordPages(data.pages as any);
+      },
+    }
+  );
+
+  useEffect(() => {
+    const lastItem = rowVirtualizer.getVirtualItems().at(-1);
+    if (!lastItem) return;
+    if (lastItem.index >= flatRecords.length - 50 && !fetchingMore && listRecords.hasNextPage) {
+      setFetchingMore(true);
+      void listRecords.fetchNextPage().finally(() => setFetchingMore(false));
+    }
+  }, [rowVirtualizer.getVirtualItems(), flatRecords.length, listRecords.hasNextPage]);
+
+  useEffect(() => {
+    // Reset pages when switching tables
+    setRecordPages([]);
+    if (listRecords.refetch) {
+      void listRecords.refetch();
+    }
+  }, [optimisticTable.id]);
+
   // Local cell editor to avoid focus loss and re-mounts
   interface CellEditorProps {
     recordId: string;
@@ -571,8 +629,8 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
         e.preventDefault();
         const inputEl = e.currentTarget;
         skipCommitOnBlurRef.current = true;
-        await onCommit(value);
         inputEl?.blur();
+        void onCommit(value);
       } else if (e.key === "Escape") {
         e.preventDefault();
         const inputEl = e.currentTarget;
@@ -727,7 +785,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
   }, [optimisticTable.columns, updateColumnType.isPending]);
 
   const tableInstance = useReactTable({
-    data: stableData,
+    data: flatRecords,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (originalRow) => originalRow.id,
@@ -783,7 +841,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto relative">
+      <div className="flex-1 overflow-auto relative" ref={parentRef}>
         {(isUpdating || isColumnTypeChanging) && (
           <div className="absolute top-2 right-2 z-10">
             <div className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full flex items-center space-x-1">
@@ -814,53 +872,87 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
             ))}
           </thead>
           <tbody>
-            {tableInstance.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50 group">
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    className="border-r border-gray-200 px-3 py-2 text-sm text-gray-900 first:border-l-0"
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-                {/* Add delete row button */}
-                <td className="border-r border-gray-200 px-3 py-2">
-                  <button
-                    onClick={async () => {
-                      if (confirm("Are you sure you want to delete this row?")) {
-                        await deleteRecord.mutateAsync({ recordId: row.original.id });
-                      }
-                    }}
-                    className="p-1 hover:bg-red-100 rounded text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Delete row"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            
-            {/* Add new row button */}
-            <tr>
-              <td className="border-r border-gray-200 px-3 py-2 first:border-l-0">
-                <button
-                  onClick={handleCreateRow}
-                  className="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
-                >
-                  <Plus className="w-4 h-4 text-gray-500" />
-                </button>
-              </td>
-              <td colSpan={optimisticTable.columns.length + 1} className="border-r border-gray-200 px-3 py-2">
-                <button 
-                  onClick={handleCreateRow}
-                  className="flex items-center text-sm text-gray-500 hover:text-gray-700"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add...
-                </button>
-              </td>
-            </tr>
+            {(() => {
+              const virtualItems = rowVirtualizer.getVirtualItems();
+              if (virtualItems.length === 0) {
+                // Fallback: render a small window until virtualizer measures
+                const rows = tableInstance.getRowModel().rows.slice(0, 100);
+                return (
+                  <>
+                    {rows.map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50 group">
+                        {row.getVisibleCells().map((cell) => (
+                          <td
+                            key={cell.id}
+                            className="border-r border-gray-200 px-3 py-2 text-sm text-gray-900 first:border-l-0"
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                        <td className="border-r border-gray-200 px-3 py-2">
+                          <button
+                            onClick={async () => {
+                              if (confirm("Are you sure you want to delete this row?")) {
+                                await deleteRecord.mutateAsync({ recordId: row.original.id });
+                              }
+                            }}
+                            className="p-1 hover:bg-red-100 rounded text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Delete row"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </>
+                );
+              }
+              const paddingTop = virtualItems[0]!.start;
+              const paddingBottom = rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1]!.end;
+              return (
+                <>
+                  {paddingTop > 0 && (
+                    <tr>
+                      <td style={{ height: paddingTop }} colSpan={columns.length + 1} />
+                    </tr>
+                  )}
+                  {virtualItems.map((virtualRow) => {
+                    const row = tableInstance.getRowModel().rows[virtualRow.index];
+                    if (!row) return null;
+                    return (
+                      <tr key={row.id} className="hover:bg-gray-50 group">
+                        {row.getVisibleCells().map((cell) => (
+                          <td
+                            key={cell.id}
+                            className="border-r border-gray-200 px-3 py-2 text-sm text-gray-900 first:border-l-0"
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                        <td className="border-r border-gray-200 px-3 py-2">
+                          <button
+                            onClick={async () => {
+                              if (confirm("Are you sure you want to delete this row?")) {
+                                await deleteRecord.mutateAsync({ recordId: row.original.id });
+                              }
+                            }}
+                            className="p-1 hover:bg-red-100 rounded text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Delete row"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {paddingBottom > 0 && (
+                    <tr>
+                      <td style={{ height: paddingBottom }} colSpan={columns.length + 1} />
+                    </tr>
+                  )}
+                </>
+              );
+            })()}
           </tbody>
         </table>
       </div>

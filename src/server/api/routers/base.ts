@@ -5,6 +5,53 @@ import { ColumnType } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 export const baseRouter = createTRPCRouter({
+  // Records virtualization: paginated fetch
+  listRecords: protectedProcedure
+    .input(z.object({ tableId: z.string(), cursor: z.string().nullish(), limit: z.number().min(1).max(1000).default(1000) }))
+    .query(async ({ ctx, input }) => {
+      const table = await ctx.db.table.findFirst({
+        where: { id: input.tableId, base: { owner: { id: ctx.session.user.id } } },
+        select: { id: true },
+      });
+      if (!table) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const records = await ctx.db.record.findMany({
+        where: { tableId: input.tableId },
+        orderBy: { id: "asc" },
+        take: input.limit + 1,
+        cursor: input.cursor ? { id: input.cursor } : undefined,
+        select: { id: true, data: true },
+      });
+
+      let nextCursor: string | null = null;
+      if (records.length > input.limit) {
+        const next = records.pop()!;
+        nextCursor = next.id;
+      }
+      return { items: records, nextCursor };
+    }),
+
+  // Bulk insert many rows
+  addManyRecords: protectedProcedure
+    .input(z.object({ tableId: z.string(), count: z.number().min(1).max(100_000) }))
+    .mutation(async ({ ctx, input }) => {
+      const table = await ctx.db.table.findFirst({
+        where: { id: input.tableId, base: { owner: { id: ctx.session.user.id } } },
+        include: { columns: true },
+      });
+      if (!table) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const blank: Prisma.JsonObject = Object.fromEntries(table.columns.map((c) => [c.id, ""]));
+
+      const BATCH = 1000; // safe batch size
+      for (let offset = 0; offset < input.count; offset += BATCH) {
+        const size = Math.min(BATCH, input.count - offset);
+        await ctx.db.record.createMany({
+          data: Array.from({ length: size }, () => ({ tableId: table.id, data: blank })),
+        });
+      }
+      return { added: input.count };
+    }),
   create: protectedProcedure
     .mutation(async ({ ctx }) => {
       const base = await ctx.db.base.create({
@@ -80,8 +127,10 @@ export const baseRouter = createTRPCRouter({
               columns: {
                 orderBy: { order: "asc" },
               },
+              // Seed initial page for UX; remaining rows are fetched via virtualization
               records: {
-                orderBy: { createdAt: "asc" },
+                orderBy: { id: "asc" },
+                take: 200,
               },
             },
           },
