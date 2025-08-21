@@ -184,6 +184,10 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
   // Track which cells are currently being edited to preserve their values during re-renders
   // This prevents text from being deleted when other cells are updated and cause re-renders
   const [editingCells, setEditingCells] = useState<Map<string, string>>(new Map());
+  const editingCellsRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    editingCellsRef.current = editingCells;
+  }, [editingCells]);
   
   // Update optimistic table when prop changes
   useEffect(() => {
@@ -195,16 +199,18 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
   // Ensure stable row ordering by maintaining original positions
   // This prevents rows from "jumping around" during optimistic updates
   const getStableRows = (rows: TableRow[]) => {
-    // Create a map of original positions
+    // Create a map of original positions from the base table
     const originalPositions = new Map<string, number>();
     table.rows.forEach((row, index) => {
       originalPositions.set(row.id, index);
     });
     
-    // Sort rows by their original position to maintain order
-    return rows.sort((a, b) => {
-      const posA = originalPositions.get(a.id) ?? 0;
-      const posB = originalPositions.get(b.id) ?? 0;
+    // Create a stable copy and sort by original position
+    const rowsCopy = [...rows];
+    return rowsCopy.sort((a, b) => {
+      const defaultPos = Number.MAX_SAFE_INTEGER;
+      const posA = originalPositions.get(a.id) ?? defaultPos;
+      const posB = originalPositions.get(b.id) ?? defaultPos;
       return posA - posB;
     });
   };
@@ -319,9 +325,8 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     });
 
     // Optimistically update the UI immediately while preserving row order
-    setOptimisticTable(prev => ({
-      ...prev,
-      rows: getStableRows(prev.rows.map(row => 
+    setOptimisticTable(prev => {
+      const updatedRows = prev.rows.map(row => 
         row.id === recordId ? {
           ...row,
           data: {
@@ -329,8 +334,13 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
             [columnId]: processedValue
           }
         } : row
-      ))
-    }));
+      );
+      
+      return {
+        ...prev,
+        rows: updatedRows
+      };
+    });
 
     try {
       setIsUpdating(true);
@@ -343,7 +353,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
       // Revert optimistic update on error while preserving row order
       setOptimisticTable(prev => ({
         ...prev,
-        rows: getStableRows(prev.rows.map(row => 
+        rows: prev.rows.map(row => 
           row.id === recordId ? {
             ...row,
             data: {
@@ -351,7 +361,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
               [columnId]: table.rows.find(r => r.id === recordId)?.data[columnId] || ""
             }
           } : row
-        ))
+        )
       }));
     } finally {
       setIsUpdating(false);
@@ -372,7 +382,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     // Optimistically add the row immediately
     setOptimisticTable(prev => ({
       ...prev,
-      rows: getStableRows([...prev.rows, newRow])
+      rows: [...prev.rows, newRow]
     }));
 
     try {
@@ -382,7 +392,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
       // Remove the temporary row on error
       setOptimisticTable(prev => ({
         ...prev,
-        rows: getStableRows(prev.rows.filter(row => row.id !== tempId))
+        rows: prev.rows.filter(row => row.id !== tempId)
       }));
     }
   };
@@ -481,15 +491,58 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     });
   };
 
-  // Get the current value for a cell (either editing value or optimistic value)
-  const getCellValue = (recordId: string, columnId: string) => {
-    const editingKey = `${recordId}-${columnId}`;
-    if (editingCells.has(editingKey)) {
-      return editingCells.get(editingKey) || "";
-    }
-    
-    const row = optimisticTable.rows.find(r => r.id === recordId);
-    return row?.data[columnId] ?? "";
+  // Memoize stable, sorted data to avoid remounts on each render
+  const stableData = useMemo(() => getStableRows(optimisticTable.rows), [optimisticTable.rows, table.rows]);
+
+  // Local cell editor to avoid focus loss and re-mounts
+  interface CellEditorProps {
+    recordId: string;
+    columnId: string;
+    initialValue: string | number | null;
+    columnType: "TEXT" | "NUMBER" | "text" | "number";
+    onCommit: (value: string) => Promise<void> | void;
+  }
+  const CellEditor: React.FC<CellEditorProps> = ({ recordId, columnId, initialValue, columnType, onCommit }) => {
+    const [value, setValue] = useState<string>(initialValue == null ? "" : String(initialValue));
+    const [isFocused, setIsFocused] = useState(false);
+
+    // Sync when initialValue changes from outside and the input is not focused
+    useEffect(() => {
+      if (!isFocused) {
+        setValue(initialValue == null ? "" : String(initialValue));
+      }
+    }, [initialValue, isFocused]);
+
+    const handleBlur = async () => {
+      await onCommit(value);
+      setIsFocused(false);
+    };
+
+    const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        await onCommit(value);
+        (e.currentTarget as HTMLInputElement).blur();
+      } else if (e.key === "Escape") {
+        setValue(initialValue == null ? "" : String(initialValue));
+        (e.currentTarget as HTMLInputElement).blur();
+      }
+    };
+
+    const isNumber = columnType === "NUMBER" || columnType === "number";
+
+    return (
+      <input
+        type={isNumber ? "number" : "text"}
+        value={value}
+        onFocus={() => setIsFocused(true)}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className="px-2 py-1 w-full bg-transparent outline-none focus:bg-white focus:border focus:border-blue-300 rounded"
+        placeholder=""
+        inputMode={isNumber ? "decimal" : undefined}
+      />
+    );
   };
 
   const columns = useMemo<ColumnDef<TableRow, string | number | null>[]>(() => {
@@ -559,48 +612,37 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
                 handleCellEdit(recordId, columnId, v);
               };
 
+              // Get the current value for this cell
+              const editingKey = `${recordId}-${columnId}`;
+              const editingMap = editingCellsRef.current;
+              const baseRow = stableData.find(r => r.id === recordId) ?? info.row.original;
+              const baseValue = baseRow?.data[columnId] ?? "";
+              const currentValue = editingMap.has(editingKey)
+                ? editingMap.get(editingKey) || ""
+                : (baseValue ?? "");
+
               // Use the optimistic column type for immediate UI updates
               const currentColumn = optimisticTable.columns.find(c => c.id === col.id);
               const columnType = currentColumn?.type || col.type;
 
               if (columnType === "NUMBER" || columnType === "number") {
                 return (
-                  <input
-                    type="number"
-                    value={getCellValue(recordId, columnId)}
-                    onChange={(e) => onInputChange(e.target.value)}
-                    onBlur={(e) => onChange(e.currentTarget.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        onChange(e.currentTarget.value);
-                        e.currentTarget.blur();
-                      } else if (e.key === "Escape") {
-                        cancelCellEdit(recordId, columnId);
-                        e.currentTarget.blur();
-                      }
-                    }}
-                    className="px-2 py-1 w-full bg-transparent outline-none focus:bg-white focus:border focus:border-blue-300 rounded"
-                    placeholder=""
+                  <CellEditor
+                    recordId={recordId}
+                    columnId={columnId}
+                    initialValue={currentValue}
+                    columnType={columnType}
+                    onCommit={onChange}
                   />
                 );
               }
               return (
-                <input
-                  type="text"
-                  value={getCellValue(recordId, columnId)}
-                  onChange={(e) => onInputChange(e.target.value)}
-                  onBlur={(e) => onChange(e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      onChange(e.currentTarget.value);
-                      e.currentTarget.blur();
-                    } else if (e.key === "Escape") {
-                      cancelCellEdit(recordId, columnId);
-                      e.currentTarget.blur();
-                    }
-                  }}
-                  placeholder=""
-                  className="px-2 py-1 w-full bg-transparent outline-none focus:bg-white focus:border focus:border-blue-300 rounded"
+                <CellEditor
+                  recordId={recordId}
+                  columnId={columnId}
+                  initialValue={currentValue}
+                  columnType={columnType}
+                  onCommit={onChange}
                 />
               );
             },
@@ -629,12 +671,13 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     );
 
     return cols;
-  }, [optimisticTable, optimisticTable.id, createColumn, deleteColumn, updateColumnType, utils.base.getById, baseId, onChanged]);
+  }, [optimisticTable.columns, updateColumnType.isPending]);
 
   const tableInstance = useReactTable({
-    data: getStableRows(optimisticTable.rows),
+    data: stableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
+    getRowId: (originalRow) => originalRow.id,
   });
 
   return (
@@ -718,8 +761,8 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
             ))}
           </thead>
           <tbody>
-            {tableInstance.getRowModel().rows.map((row, index) => (
-              <tr key={`${row.id}-${index}`} className="hover:bg-gray-50 group">
+            {tableInstance.getRowModel().rows.map((row) => (
+              <tr key={row.id} className="hover:bg-gray-50 group">
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
