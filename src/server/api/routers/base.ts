@@ -183,6 +183,22 @@ export const baseRouter = createTRPCRouter({
       return { message: "Table deleted" };
     }),
 
+  renameTable: protectedProcedure
+    .input(z.object({ tableId: z.string(), name: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const table = await ctx.db.table.findFirst({
+        where: { id: input.tableId, base: { owner: { id: ctx.session.user.id } } },
+        select: { id: true },
+      });
+      if (!table) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const updated = await ctx.db.table.update({
+        where: { id: input.tableId },
+        data: { name: input.name.trim() },
+      });
+      return updated;
+    }),
+
   // Columns
   createColumn: protectedProcedure
     .input(z.object({
@@ -251,6 +267,22 @@ export const baseRouter = createTRPCRouter({
 
       await ctx.db.column.delete({ where: { id: input.columnId } });
       return { message: "Column deleted" };
+    }),
+
+  renameColumn: protectedProcedure
+    .input(z.object({ columnId: z.string(), name: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const column = await ctx.db.column.findFirst({
+        where: { id: input.columnId, table: { base: { owner: { id: ctx.session.user.id } } } },
+        select: { id: true },
+      });
+      if (!column) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const updated = await ctx.db.column.update({
+        where: { id: input.columnId },
+        data: { name: input.name.trim() },
+      });
+      return updated;
     }),
 
   // Records

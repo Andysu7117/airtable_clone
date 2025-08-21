@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Plus, Menu, Grid3X3, Search, Settings, HelpCircle, Bell, User } from "lucide-react";
+import { ChevronDown, Plus, Menu, Grid3X3, Search, Settings, HelpCircle, Bell, User, Trash2 } from "lucide-react";
 import type { Table } from "./types";
 import { api } from "~/trpc/react";
 
@@ -13,10 +13,62 @@ interface SidebarProps {
   onChanged?: () => void;
 }
 
+interface EditableTableNameProps {
+  value: string;
+  onSave: (newValue: string) => void;
+}
+
+function EditableTableName({ value, onSave }: EditableTableNameProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+
+  const handleDoubleClick = () => {
+    setIsEditing(true);
+    setEditValue(value);
+  };
+
+  const handleSave = () => {
+    if (editValue.trim() !== value) {
+      onSave(editValue.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleSave();
+    } else if (e.key === "Escape") {
+      setIsEditing(false);
+      setEditValue(value);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <input
+        type="text"
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        className="bg-white border border-blue-500 rounded px-1 py-0.5 outline-none text-sm font-medium text-gray-900"
+        autoFocus
+      />
+    );
+  }
+
+  return (
+    <span onDoubleClick={handleDoubleClick} className="cursor-pointer select-none">
+      {value}
+    </span>
+  );
+}
+
 export default function Sidebar({ baseId, tables, selectedTable, onTableSelect, onChanged }: SidebarProps) {
   const [isTableDropdownOpen, setIsTableDropdownOpen] = useState(false);
   const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
   const utils = api.useContext();
+  
   const createTable = api.base.createTable.useMutation({
     onSuccess: async (t) => {
       await utils.base.getById.invalidate(baseId);
@@ -25,6 +77,57 @@ export default function Sidebar({ baseId, tables, selectedTable, onTableSelect, 
       onTableSelect({ ...t, columns: t.columns.map((c) => ({ ...c, type: c.type as unknown as "TEXT" | "NUMBER", isRequired: false })), rows: [] });
     },
   });
+  
+  const renameTable = api.base.renameTable.useMutation({ 
+    onSuccess: async () => { 
+      await utils.base.getById.invalidate(baseId); 
+      onChanged?.(); 
+    } 
+  });
+
+  const deleteTable = api.base.deleteTable.useMutation({
+    onSuccess: async () => {
+      await utils.base.getById.invalidate(baseId);
+      onChanged?.();
+      // If the deleted table was selected, select the first available table
+      if (tables.length > 1) {
+        const remainingTables = tables.filter(t => t.id !== selectedTable.id);
+        if (remainingTables.length > 0) {
+          const nextTable = remainingTables[0];
+          if (nextTable) {
+            onTableSelect(nextTable);
+          }
+        }
+      }
+    },
+  });
+
+  const handleTableRename = async (newName: string) => {
+    try {
+      // Optimistically update the local state immediately
+      onTableSelect({ ...selectedTable, name: newName });
+      
+      // Call the API to persist the change
+      await renameTable.mutateAsync({ tableId: selectedTable.id, name: newName });
+      
+      // The refetch will happen automatically via onSuccess callback
+    } catch (error) {
+      console.error('Failed to rename table:', error);
+      
+      // If the API call fails, revert the optimistic update
+      // Find the original table name from the tables array
+      const originalTable = tables.find(t => t.id === selectedTable.id);
+      if (originalTable) {
+        onTableSelect({ ...selectedTable, name: originalTable.name });
+      }
+    }
+  };
+
+  const handleDeleteTable = async (tableId: string, tableName: string) => {
+    if (confirm(`Are you sure you want to delete the table "${tableName}"? This action cannot be undone.`)) {
+      await deleteTable.mutateAsync({ tableId });
+    }
+  };
 
   return (
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
@@ -35,7 +138,10 @@ export default function Sidebar({ baseId, tables, selectedTable, onTableSelect, 
             onClick={() => setIsTableDropdownOpen(!isTableDropdownOpen)}
             className="flex items-center justify-between w-full px-3 py-2 text-left text-sm font-medium text-gray-900 bg-gray-50 border border-gray-300 rounded-md hover:bg-gray-100"
           >
-            <span>{selectedTable.name}</span>
+            <EditableTableName
+              value={selectedTable.name}
+              onSave={handleTableRename}
+            />
             <ChevronDown className="w-4 h-4" />
           </button>
           
@@ -43,13 +149,23 @@ export default function Sidebar({ baseId, tables, selectedTable, onTableSelect, 
             <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-10">
               <div className="py-1">
                 {tables.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => { onTableSelect(t); setIsTableDropdownOpen(false); }}
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 ${t.id === selectedTable.id ? "text-blue-600 bg-blue-50" : "text-gray-700"}`}
-                  >
-                    {t.name}
-                  </button>
+                  <div key={t.id} className="flex items-center justify-between px-3 py-2 hover:bg-gray-100">
+                    <button
+                      onClick={() => { onTableSelect(t); setIsTableDropdownOpen(false); }}
+                      className={`flex-1 text-left text-sm ${t.id === selectedTable.id ? "text-blue-600 bg-blue-50" : "text-gray-700"}`}
+                    >
+                      {t.name}
+                    </button>
+                    {tables.length > 1 && (
+                      <button
+                        onClick={() => handleDeleteTable(t.id, t.name)}
+                        className="p-1 hover:bg-red-100 rounded text-red-600 hover:text-red-700 ml-2"
+                        title={`Delete ${t.name}`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>

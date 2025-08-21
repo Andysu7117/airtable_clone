@@ -36,6 +36,13 @@ export default function BaseView({ baseId, initialBase }: BaseViewProps) {
     : initialBase;
   const [selectedTable, setSelectedTable] = useState<UiTable | undefined>(base.tables[0]);
 
+  // Mutations
+  const renameTableMutation = api.base.renameTable.useMutation({
+    onSuccess: () => {
+      refetch();
+    },
+  });
+
   // Keep selection stable and refresh selected table content only when data actually changes
   useEffect(() => {
     if (!dbBase) return;
@@ -69,6 +76,29 @@ export default function BaseView({ baseId, initialBase }: BaseViewProps) {
     }
   }, [dbBase, selectedTable]);
 
+  const handleTableRename = async (tableId: string, newName: string) => {
+    try {
+      // Optimistically update the local state immediately
+      setSelectedTable(prev => prev ? { ...prev, name: newName } : prev);
+      
+      // Call the API to persist the change
+      await renameTableMutation.mutateAsync({ tableId, name: newName });
+      
+      // The refetch will happen automatically via onSuccess callback
+      // This ensures the local state stays in sync with the database
+    } catch (error) {
+      console.error('Failed to rename table:', error);
+      
+      // If the API call fails, revert the optimistic update
+      if (dbBase) {
+        const table = dbBase.tables.find(t => t.id === tableId);
+        if (table) {
+          setSelectedTable(prev => prev ? { ...prev, name: table.name } : prev);
+        }
+      }
+    }
+  };
+
   if (!selectedTable) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -94,7 +124,11 @@ export default function BaseView({ baseId, initialBase }: BaseViewProps) {
         />
         
         <div className="flex-1 flex flex-col">
-          <TableHeader base={base} />
+          <TableHeader 
+            base={base} 
+            selectedTable={selectedTable}
+            onTableRename={handleTableRename}
+          />
           {selectedTable && (
             <TableInterface baseId={baseId} table={selectedTable} onChanged={() => void refetch()} />
           )}

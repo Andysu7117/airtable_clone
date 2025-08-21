@@ -8,7 +8,7 @@ import {
   createColumnHelper,
   type ColumnDef,
 } from "@tanstack/react-table";
-import { Eye, Filter, Group, ArrowUpDown, Palette, List, Share, Search, Plus, CheckSquare, Info } from "lucide-react";
+import { Eye, Filter, Group, ArrowUpDown, Palette, List, Share, Search, Plus, CheckSquare, Info, Trash2 } from "lucide-react";
 import type { Table as TableType, TableRow } from "./types";
 import { api } from "~/trpc/react";
 
@@ -18,17 +18,116 @@ interface TableInterfaceProps {
   onChanged?: () => void;
 }
 
+interface EditableHeaderProps {
+  value: string;
+  onSave: (newValue: string) => void;
+  onDelete?: () => void;
+  className?: string;
+}
+
+function EditableHeader({ value, onSave, onDelete, className }: EditableHeaderProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+
+  const handleDoubleClick = () => {
+    setIsEditing(true);
+    setEditValue(value);
+  };
+
+  const handleSave = () => {
+    if (editValue.trim() !== value) {
+      onSave(editValue.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleSave();
+    } else if (e.key === "Escape") {
+      setIsEditing(false);
+      setEditValue(value);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <input
+        type="text"
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        className={`bg-white border border-blue-500 rounded px-1 py-0.5 outline-none ${className}`}
+        autoFocus
+      />
+    );
+  }
+
+  return (
+    <div className="flex items-center space-x-2">
+      <span onDoubleClick={handleDoubleClick} className="cursor-pointer select-none">
+        {value}
+      </span>
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          className="p-1 hover:bg-red-100 rounded text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Delete column"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 const columnHelper = createColumnHelper<TableRow>();
 
 export default function TableInterface({ baseId, table, onChanged }: TableInterfaceProps) {
-  const [data, setData] = useState<TableRow[]>(table.rows);
-
   const utils = api.useContext();
-  const createColumn = api.base.createColumn.useMutation({ onSuccess: async () => { await utils.base.getById.invalidate(baseId); onChanged?.(); } });
-  const deleteColumn = api.base.deleteColumn.useMutation({ onSuccess: async () => { await utils.base.getById.invalidate(baseId); onChanged?.(); } });
-  const createRecord = api.base.createRecord.useMutation({ onSuccess: async () => { await utils.base.getById.invalidate(baseId); onChanged?.(); } });
-  const deleteRecord = api.base.deleteRecord.useMutation({ onSuccess: async () => { await utils.base.getById.invalidate(baseId); onChanged?.(); } });
-  const updateRecord = api.base.updateRecord.useMutation();
+  
+  const createColumn = api.base.createColumn.useMutation({
+    onSuccess: async () => {
+      await utils.base.getById.invalidate(baseId);
+      onChanged?.();
+    }
+  });
+  
+  const deleteColumn = api.base.deleteColumn.useMutation({
+    onSuccess: async () => {
+      await utils.base.getById.invalidate(baseId);
+      onChanged?.();
+    }
+  });
+  
+  const createRecord = api.base.createRecord.useMutation({
+    onSuccess: async () => {
+      await utils.base.getById.invalidate(baseId);
+      onChanged?.();
+    }
+  });
+  
+  const deleteRecord = api.base.deleteRecord.useMutation({
+    onSuccess: async () => {
+      await utils.base.getById.invalidate(baseId);
+      onChanged?.();
+    }
+  });
+  
+  const updateRecord = api.base.updateRecord.useMutation({
+    onSuccess: async () => {
+      await utils.base.getById.invalidate(baseId);
+      onChanged?.();
+    }
+  });
+  
+  const renameColumn = api.base.renameColumn.useMutation({
+    onSuccess: async () => {
+      await utils.base.getById.invalidate(baseId);
+      onChanged?.();
+    }
+  });
 
   const columns = useMemo<ColumnDef<TableRow, string | number | null>[]>(() => {
     // Add checkbox column
@@ -49,8 +148,19 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
           {
             id: col.id,
             header: () => (
-              <div className="flex items-center space-x-2">
-                <span className="font-medium">{col.name}</span>
+              <div className="flex items-center space-x-2 group">
+                <EditableHeader
+                  value={col.name}
+                  onSave={async (newName) => {
+                    await renameColumn.mutateAsync({ columnId: col.id, name: newName });
+                  }}
+                  onDelete={async () => {
+                    if (confirm(`Are you sure you want to delete the column "${col.name}"?`)) {
+                      await deleteColumn.mutateAsync({ columnId: col.id });
+                    }
+                  }}
+                  className="font-medium"
+                />
                 {col.isRequired && <span className="text-red-500">*</span>}
                 {col.name === "Notes" && <List className="w-4 h-4 text-gray-500" />}
                 {col.name === "Assignee" && <span className="text-blue-600 font-medium">A</span>}
@@ -69,8 +179,6 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
               const onChange = async (v: string) => {
                 const recordId = info.row.original.id;
                 await updateRecord.mutateAsync({ recordId, values: { [col.id]: v } });
-                await utils.base.getById.invalidate(baseId);
-                onChanged?.();
               };
 
               if ((col.type === "NUMBER" || col.type === "number")) {
@@ -119,10 +227,10 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     );
 
     return cols;
-  }, [table.columns]);
+  }, [table.columns, table.id, createColumn, renameColumn, deleteColumn, updateRecord, utils.base.getById, baseId, onChanged]);
 
   const tableInstance = useReactTable({
-    data,
+    data: table.rows,
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
@@ -201,7 +309,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
           </thead>
           <tbody>
             {tableInstance.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50">
+              <tr key={row.id} className="hover:bg-gray-50 group">
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
@@ -210,6 +318,20 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
+                {/* Add delete row button */}
+                <td className="border-r border-gray-200 px-3 py-2">
+                  <button
+                    onClick={async () => {
+                      if (confirm("Are you sure you want to delete this row?")) {
+                        await deleteRecord.mutateAsync({ recordId: row.original.id });
+                      }
+                    }}
+                    className="p-1 hover:bg-red-100 rounded text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Delete row"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </td>
               </tr>
             ))}
             
@@ -238,7 +360,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
 
       {/* Bottom Bar */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 bg-gray-50">
-        <span className="text-sm text-gray-600">{data.length} records</span>
+        <span className="text-sm text-gray-600">{table.rows.length} records</span>
         <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
           <Plus className="w-4 h-4" />
           <span>Add...</span>
