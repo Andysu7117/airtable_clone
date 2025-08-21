@@ -7,7 +7,7 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 export const baseRouter = createTRPCRouter({
   // Records virtualization: paginated fetch
   listRecords: protectedProcedure
-    .input(z.object({ tableId: z.string(), cursor: z.string().nullish(), limit: z.number().min(1).max(1000).default(1000) }))
+    .input(z.object({ tableId: z.string(), cursor: z.string().nullish(), limit: z.number().min(1).max(1000).default(200) }))
     .query(async ({ ctx, input }) => {
       const table = await ctx.db.table.findFirst({
         where: { id: input.tableId, base: { owner: { id: ctx.session.user.id } } },
@@ -388,26 +388,36 @@ export const baseRouter = createTRPCRouter({
 
       // Update each record to clear incompatible data
       for (const record of records) {
-        const currentData = record.data as Record<string, any>;
-        const fieldValue = currentData[input.columnId];
+        const currentData = record.data as Record<string, unknown>;
+        const fieldValue = (currentData)[input.columnId];
         
-        let newValue: any;
+        let newValue: string | number | null;
         if (input.type === "NUMBER") {
           // For NUMBER type, only keep numeric values
-          newValue = typeof fieldValue === "number" ? fieldValue : null;
+          newValue = typeof fieldValue === "number" ? (fieldValue) : null;
         } else {
-          // For TEXT type, convert everything to string
-          newValue = fieldValue != null ? String(fieldValue) : "";
+          // For TEXT type, convert primitives to string; otherwise blank
+          if (fieldValue === null || fieldValue === undefined) {
+            newValue = "";
+          } else if (typeof fieldValue === "string") {
+            newValue = fieldValue;
+          } else if (typeof fieldValue === "number" || typeof fieldValue === "boolean") {
+            newValue = String(fieldValue);
+          } else {
+            newValue = "";
+          }
         }
         
         // Update the record with the new value
+        const merged: Prisma.JsonObject = {
+          ...(currentData as Prisma.JsonObject),
+          [input.columnId]: newValue as unknown as Prisma.JsonValue,
+        };
+
         await ctx.db.record.update({
           where: { id: record.id },
           data: {
-            data: {
-              ...currentData,
-              [input.columnId]: newValue,
-            },
+            data: merged,
           },
         });
       }

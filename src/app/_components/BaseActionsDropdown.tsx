@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { MoreHorizontal, Edit, Trash2 } from "lucide-react";
-import { api } from "~/trpc/react";
+// import { api } from "~/trpc/react";
 
 interface BaseActionsDropdownProps {
   base: {
@@ -13,7 +13,7 @@ interface BaseActionsDropdownProps {
   onRename: () => void;
 }
 
-export default function BaseActionsDropdown({ base, onDelete, onRename }: BaseActionsDropdownProps) {
+export default function BaseActionsDropdown({ base: _base, onDelete, onRename }: BaseActionsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDown, Rocket, Share, HelpCircle, Bell } from "lucide-react";
+import { ChevronDown, Rocket } from "lucide-react";
 
 interface HeaderProps {
   baseName?: string;

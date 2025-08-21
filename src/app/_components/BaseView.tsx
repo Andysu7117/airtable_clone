@@ -5,7 +5,7 @@ import Sidebar from "./Sidebar";
 import TableHeader from "./TableHeader";
 import TableInterface from "./TableInterface";
 import Header from "./Header";
-import type { Base, Table } from "./types";
+// import type { Base, Table } from "./types";
 import { api } from "~/trpc/react";
 import type { Base as UiBase, Table as UiTable } from "./types";
 
@@ -30,7 +30,7 @@ export default function BaseView({ baseId, initialBase }: BaseViewProps) {
             order: c.order,
             isRequired: false,
           })),
-          rows: t.records.map((r) => ({ id: r.id, data: r.data as Record<string, string | number> })),
+          rows: t.records.map((r) => ({ id: r.id, data: r.data as Record<string, string | number | null> })),
         })),
       }
     : initialBase;
@@ -39,7 +39,7 @@ export default function BaseView({ baseId, initialBase }: BaseViewProps) {
   // Mutations
   const renameTableMutation = api.base.renameTable.useMutation({
     onSuccess: () => {
-      refetch();
+      void refetch();
     },
   });
 
@@ -56,7 +56,7 @@ export default function BaseView({ baseId, initialBase }: BaseViewProps) {
         order: c.order,
         isRequired: false,
       })),
-      rows: t.records.map((r) => ({ id: r.id, data: r.data as Record<string, string | number> })),
+      rows: t.records.map((r) => ({ id: r.id, data: r.data as Record<string, string | number | null> })),
     });
 
     if (!selectedTable) {

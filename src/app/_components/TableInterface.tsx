@@ -9,7 +9,7 @@ import {
   type ColumnDef,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Eye, Filter, Group, ArrowUpDown, Palette, List, Share, Search, Plus, CheckSquare, Info, Trash2, ChevronDown, Type, Hash } from "lucide-react";
+import { Eye, Filter, Group, ArrowUpDown, Palette, List, Share, Search, Plus, Info, Trash2, ChevronDown, Type, Hash } from "lucide-react";
 import type { Table as TableType, TableRow } from "./types";
 import { api } from "~/trpc/react";
 
@@ -209,24 +209,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     });
   }, [table]);
 
-  // Ensure stable row ordering by maintaining original positions
-  // This prevents rows from "jumping around" during optimistic updates
-  const getStableRows = (rows: TableRow[]) => {
-    // Create a map of original positions from the base table
-    const originalPositions = new Map<string, number>();
-    table.rows.forEach((row, index) => {
-      originalPositions.set(row.id, index);
-    });
-    
-    // Create a stable copy and sort by original position
-    const rowsCopy = [...rows];
-    return rowsCopy.sort((a, b) => {
-      const defaultPos = Number.MAX_SAFE_INTEGER;
-      const posA = originalPositions.get(a.id) ?? defaultPos;
-      const posB = originalPositions.get(b.id) ?? defaultPos;
-      return posA - posB;
-    });
-  };
+  // Removed getStableRows (no longer used)
   
   const createColumn = api.base.createColumn.useMutation({
     onSuccess: async () => {
@@ -305,7 +288,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
       setOptimisticTable(prev => ({
         ...prev,
         columns: prev.columns.map(col => 
-          col.id === columnId ? { ...col, name: table.columns.find(c => c.id === columnId)?.name || col.name } : col
+          col.id === columnId ? { ...col, name: table.columns.find(c => c.id === columnId)?.name ?? col.name } : col
         )
       }));
     } finally {
@@ -376,7 +359,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
             ...row,
             data: {
               ...row.data,
-              [columnId]: table.rows.find(r => r.id === recordId)?.data[columnId] || ""
+              [columnId]: table.rows.find(r => r.id === recordId)?.data[columnId] ?? ""
             }
           } : row
         )
@@ -480,7 +463,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
       setOptimisticTable(prev => ({
         ...prev,
         columns: prev.columns.map(col => 
-          col.id === columnId ? { ...col, type: table.columns.find(c => c.id === columnId)?.type || col.type } : col
+          col.id === columnId ? { ...col, type: table.columns.find(c => c.id === columnId)?.type ?? col.type } : col
         )
       }));
     } finally {
@@ -496,15 +479,6 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     setEditingCells(prev => {
       const newMap = new Map(prev);
       newMap.set(`${recordId}-${columnId}`, value);
-      return newMap;
-    });
-  };
-
-  // Cancel editing for a cell
-  const cancelCellEdit = (recordId: string, columnId: string) => {
-    setEditingCells(prev => {
-      const newMap = new Map(prev);
-      newMap.delete(`${recordId}-${columnId}`);
       return newMap;
     });
   };
@@ -534,98 +508,59 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     }));
   };
 
-  // Memoize stable, sorted data to avoid remounts on each render
-  const stableData = useMemo(() => getStableRows(optimisticTable.rows), [optimisticTable.rows, table.rows]);
-
   // Data virtualization + pagination
   const parentRef = useRef<HTMLDivElement | null>(null);
-  const [recordPages, setRecordPages] = useState<{ items: { id: string; data: Record<string, string | number | null> }[]; nextCursor: string | null }[]>([]);
   const [fetchingMore, setFetchingMore] = useState(false);
 
-  const flatRecords = useMemo(() => {
-    // Use optimisticTable for current page; fallback to fetched pages
-    const optimisticMap = new Map(optimisticTable.rows.map(r => [r.id, r] as const));
-    const paged: { id: string; data: Record<string, string | number | null> }[] = [];
-    for (const page of recordPages) {
-      for (const rec of page.items) {
-        const opt = optimisticMap.get(rec.id);
-        paged.push({ id: rec.id, data: (opt?.data ?? rec.data) as Record<string, string | number | null> });
-      }
+  // Fetch pages
+  const listRecords = api.base.listRecords.useInfiniteQuery(
+    { tableId: optimisticTable.id, limit: 200 },
+    {
+      getNextPageParam: (last) => last?.nextCursor ?? undefined,
     }
-    // Include any optimistic-only rows (e.g., just-added) that aren't in pages yet
-    for (const r of optimisticTable.rows) {
-      if (!paged.find(p => p.id === r.id)) paged.push({ id: r.id, data: r.data });
-    }
-    return paged;
-  }, [recordPages, optimisticTable.rows]);
+  );
 
+  type PageItem = { id: string; data: Record<string, string | number | null> };
+  type PageResult = { items: PageItem[]; nextCursor: string | null };
+
+  // Build rows only from infinite query pages
+  const rowsFromPages = useMemo<PageItem[]>(() => {
+    const pages = (listRecords.data?.pages as unknown as PageResult[]) ?? [];
+    return pages.flatMap((p) => p.items);
+  }, [listRecords.data?.pages]);
+
+  // Virtualizer and table use rowsFromPages; if empty, render fallback of initial optimistic rows
   const rowVirtualizer = useVirtualizer({
-    count: flatRecords.length > 0 ? flatRecords.length : stableData.length,
+    count: rowsFromPages.length > 0 ? rowsFromPages.length : optimisticTable.rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36,
     overscan: 12,
   });
 
-  // Fetch pages
-  const listRecords = api.base.listRecords.useInfiniteQuery(
-    { tableId: optimisticTable.id, limit: 1000 },
-    {
-      getNextPageParam: (last) => last?.nextCursor ?? undefined,
-      onSuccess: (data) => {
-        setRecordPages(data.pages as any);
-      },
-    }
-  );
-
+  // Only refetch on table change
   useEffect(() => {
-    const lastItem = rowVirtualizer.getVirtualItems().at(-1);
+    void listRecords.refetch();
+  }, [listRecords, optimisticTable.id]);
+
+  // Keep fetch-more simple: near end → fetchNextPage
+  useEffect(() => {
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    if (virtualItems.length === 0) return;
+    const lastItem = virtualItems[virtualItems.length - 1];
     if (!lastItem) return;
-    if (lastItem.index >= flatRecords.length - 50 && !fetchingMore && listRecords.hasNextPage) {
+    const nearEnd = lastItem.index >= (rowsFromPages.length - 20);
+    if (nearEnd && !fetchingMore && listRecords.hasNextPage) {
       setFetchingMore(true);
       void listRecords.fetchNextPage().finally(() => setFetchingMore(false));
     }
-  }, [rowVirtualizer.getVirtualItems(), flatRecords.length, listRecords.hasNextPage]);
+  }, [rowsFromPages.length, rowVirtualizer, listRecords, fetchingMore]);
 
+  // Ensure first page is fetched on mount/table change
   useEffect(() => {
-    // Reset pages when switching tables
-    setRecordPages([]);
-    if (listRecords.refetch) {
+    if (!listRecords.data && !listRecords.isFetching) {
       void listRecords.refetch();
     }
-  }, [optimisticTable.id]);
-
-  // After bulk add, the parent button invalidates; also listen here to changes in optimistic row count
-  useEffect(() => {
-    // If we have very few pages yet but many optimistic rows, refetch
-    if (recordPages.length === 0 && optimisticTable.rows.length > 0) {
-      if (listRecords.refetch) void listRecords.refetch();
-    }
-  }, [recordPages.length, optimisticTable.rows.length]);
-
-  useEffect(() => {
-    const tryFetchMore = () => {
-      const virtualItems = rowVirtualizer.getVirtualItems();
-      if (virtualItems.length === 0) return;
-      const lastItem = virtualItems[virtualItems.length - 1];
-      if (lastItem.index >= flatRecords.length - 50 && !fetchingMore && listRecords.hasNextPage) {
-        setFetchingMore(true);
-        void listRecords.fetchNextPage().finally(() => setFetchingMore(false));
-      }
-    };
-    tryFetchMore();
-  }, [flatRecords.length, listRecords.hasNextPage]);
-
-  // Seed initial page from props so rows render immediately
-  useEffect(() => {
-    setRecordPages([{ items: table.rows as any, nextCursor: null }]);
-  }, [table.id]);
-
-  // Ensure we fetch the first page if none is loaded yet
-  useEffect(() => {
-    if ((listRecords.data?.pages?.length ?? 0) === 0 && !listRecords.isFetching) {
-      void listRecords.fetchNextPage();
-    }
-  }, [listRecords.isFetching, optimisticTable.id]);
+  }, [listRecords, optimisticTable.id]);
 
   // Local cell editor to avoid focus loss and re-mounts
   interface CellEditorProps {
@@ -755,33 +690,13 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
                 await handleRecordUpdate(recordId, columnId, v);
               };
 
-              const onInputChange = (v: string) => {
-                handleCellEdit(recordId, columnId, v);
-              };
-
               // Get the current value for this cell
-              const editingKey = `${recordId}-${columnId}`;
-              const editingMap = editingCellsRef.current;
-              const baseValueFromAccessor = value ?? "";
-              const currentValue = editingMap.has(editingKey)
-                ? editingMap.get(editingKey) || ""
-                : (baseValueFromAccessor as string);
+              const currentValue = String(value ?? "");
 
               // Use the optimistic column type for immediate UI updates
               const currentColumn = optimisticTable.columns.find(c => c.id === col.id);
-              const columnType = currentColumn?.type || col.type;
-
-              if (columnType === "NUMBER" || columnType === "number") {
-                return (
-                  <CellEditor
-                    recordId={recordId}
-                    columnId={columnId}
-                    initialValue={currentValue}
-                    columnType={columnType}
-                    onCommit={onChange}
-                  />
-                );
-              }
+              const columnType = currentColumn?.type ?? col.type;
+              
               return (
                 <CellEditor
                   recordId={recordId}
@@ -820,7 +735,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
   }, [optimisticTable.columns, updateColumnType.isPending]);
 
   const tableInstance = useReactTable({
-    data: flatRecords.length > 0 ? flatRecords : stableData,
+    data: rowsFromPages.length > 0 ? rowsFromPages : optimisticTable.rows,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (originalRow) => originalRow.id,
@@ -994,8 +909,8 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
 
       {/* Bottom Bar */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 bg-gray-50">
-        <span className="text-sm text-gray-600">{optimisticTable.rows.length} records</span>
-        <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
+        <span className="text-sm text-gray-600">{rowsFromPages.length > 0 ? rowsFromPages.length : optimisticTable.rows.length} records</span>
+        <button onClick={handleCreateRow} className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
           <Plus className="w-4 h-4" />
           <span>Add...</span>
         </button>
