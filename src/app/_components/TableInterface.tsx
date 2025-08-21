@@ -560,7 +560,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
   }, [recordPages, optimisticTable.rows]);
 
   const rowVirtualizer = useVirtualizer({
-    count: flatRecords.length,
+    count: flatRecords.length > 0 ? flatRecords.length : stableData.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36,
     overscan: 12,
@@ -593,6 +593,39 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
       void listRecords.refetch();
     }
   }, [optimisticTable.id]);
+
+  // After bulk add, the parent button invalidates; also listen here to changes in optimistic row count
+  useEffect(() => {
+    // If we have very few pages yet but many optimistic rows, refetch
+    if (recordPages.length === 0 && optimisticTable.rows.length > 0) {
+      if (listRecords.refetch) void listRecords.refetch();
+    }
+  }, [recordPages.length, optimisticTable.rows.length]);
+
+  useEffect(() => {
+    const tryFetchMore = () => {
+      const virtualItems = rowVirtualizer.getVirtualItems();
+      if (virtualItems.length === 0) return;
+      const lastItem = virtualItems[virtualItems.length - 1];
+      if (lastItem.index >= flatRecords.length - 50 && !fetchingMore && listRecords.hasNextPage) {
+        setFetchingMore(true);
+        void listRecords.fetchNextPage().finally(() => setFetchingMore(false));
+      }
+    };
+    tryFetchMore();
+  }, [flatRecords.length, listRecords.hasNextPage]);
+
+  // Seed initial page from props so rows render immediately
+  useEffect(() => {
+    setRecordPages([{ items: table.rows as any, nextCursor: null }]);
+  }, [table.id]);
+
+  // Ensure we fetch the first page if none is loaded yet
+  useEffect(() => {
+    if ((listRecords.data?.pages?.length ?? 0) === 0 && !listRecords.isFetching) {
+      void listRecords.fetchNextPage();
+    }
+  }, [listRecords.isFetching, optimisticTable.id]);
 
   // Local cell editor to avoid focus loss and re-mounts
   interface CellEditorProps {
@@ -661,10 +694,12 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     // Add checkbox column
     const cols: ColumnDef<TableRow, string | number | null>[] = [
       columnHelper.display({
-        id: "select",
-        header: () => <div className="w-4 h-4" />,
-        cell: () => <CheckSquare className="w-4 h-4 text-gray-400" />,
-        size: 50,
+        id: "rowNumber",
+        header: () => <div className="w-8 text-xs text-gray-500">#</div>,
+        cell: ({ row }) => (
+          <div className="w-8 text-xs text-gray-500">{row.index + 1}</div>
+        ),
+        size: 60,
       }),
     ];
 
@@ -785,7 +820,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
   }, [optimisticTable.columns, updateColumnType.isPending]);
 
   const tableInstance = useReactTable({
-    data: flatRecords,
+    data: flatRecords.length > 0 ? flatRecords : stableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (originalRow) => originalRow.id,
@@ -881,14 +916,14 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
                   <>
                     {rows.map((row) => (
                       <tr key={row.id} className="hover:bg-gray-50 group">
-                        {row.getVisibleCells().map((cell) => (
-                          <td
-                            key={cell.id}
-                            className="border-r border-gray-200 px-3 py-2 text-sm text-gray-900 first:border-l-0"
-                          >
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
-                        ))}
+                {row.getVisibleCells().map((cell) => (
+                  <td
+                    key={cell.id}
+                    className="border-r border-gray-200 px-3 py-2 text-sm text-gray-900 first:border-l-0"
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
                         <td className="border-r border-gray-200 px-3 py-2">
                           <button
                             onClick={async () => {
@@ -902,8 +937,8 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
-                      </tr>
-                    ))}
+              </tr>
+            ))}
                   </>
                 );
               }
@@ -927,7 +962,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
                             className="border-r border-gray-200 px-3 py-2 text-sm text-gray-900 first:border-l-0"
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
+              </td>
                         ))}
                         <td className="border-r border-gray-200 px-3 py-2">
                           <button
@@ -940,9 +975,9 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
                             title="Delete row"
                           >
                             <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
+                </button>
+              </td>
+            </tr>
                     );
                   })}
                   {paddingBottom > 0 && (

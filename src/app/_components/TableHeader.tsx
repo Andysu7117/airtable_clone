@@ -94,8 +94,12 @@ export default function TableHeader({ base, selectedTable, onTableRename }: Tabl
             onClick={async () => {
               try {
                 setIsAdding(true);
-                await addMany.mutateAsync({ tableId: selectedTable.id, count: 100_000 });
-                await utils.base.listRecords.invalidate({ tableId: selectedTable.id, limit: 1000 });
+                const res = await addMany.mutateAsync({ tableId: selectedTable.id, count: 100_000 });
+                // Invalidate queries so active hooks refetch with correct params
+                await Promise.all([
+                  utils.base.listRecords.invalidate({ tableId: selectedTable.id, limit: 1000 }),
+                  utils.base.getById.invalidate(base.id),
+                ]);
               } finally {
                 setIsAdding(false);
               }

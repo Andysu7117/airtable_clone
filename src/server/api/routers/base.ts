@@ -20,6 +20,7 @@ export const baseRouter = createTRPCRouter({
         orderBy: { id: "asc" },
         take: input.limit + 1,
         cursor: input.cursor ? { id: input.cursor } : undefined,
+        skip: input.cursor ? 1 : 0,
         select: { id: true, data: true },
       });
 
@@ -50,7 +51,21 @@ export const baseRouter = createTRPCRouter({
           data: Array.from({ length: size }, () => ({ tableId: table.id, data: blank })),
         });
       }
-      return { added: input.count };
+      const total = await ctx.db.record.count({ where: { tableId: table.id } });
+      return { added: input.count, total };
+    }),
+
+  // Count records in a table
+  countRecords: protectedProcedure
+    .input(z.object({ tableId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const table = await ctx.db.table.findFirst({
+        where: { id: input.tableId, base: { owner: { id: ctx.session.user.id } } },
+        select: { id: true },
+      });
+      if (!table) throw new TRPCError({ code: "NOT_FOUND" });
+      const count = await ctx.db.record.count({ where: { tableId: input.tableId } });
+      return { count };
     }),
   create: protectedProcedure
     .mutation(async ({ ctx }) => {
@@ -78,6 +93,16 @@ export const baseRouter = createTRPCRouter({
           },
         },
       });
+      // Seed initial blank rows for the first table, similar to createTable
+      const firstTable = base.tables[0];
+      if (firstTable) {
+        const blankData: Prisma.JsonObject = Object.fromEntries(
+          firstTable.columns.map((c) => [c.id, ""]),
+        );
+        await ctx.db.record.createMany({
+          data: [1, 2, 3].map(() => ({ tableId: firstTable.id, data: blankData })),
+        });
+      }
       return base;
     }),
 
