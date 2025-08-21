@@ -294,10 +294,50 @@ export const baseRouter = createTRPCRouter({
       });
       if (!column) throw new TRPCError({ code: "NOT_FOUND" });
 
+      // Update the column type
       const updated = await ctx.db.column.update({
         where: { id: input.columnId },
         data: { type: input.type },
       });
+
+      // Clear all record data for this column that doesn't match the new type
+      // We'll do this by updating all records and setting the field to null/empty
+      const records = await ctx.db.record.findMany({
+        where: {
+          table: { base: { owner: { id: ctx.session.user.id } } },
+        },
+        select: {
+          id: true,
+          data: true,
+        },
+      });
+
+      // Update each record to clear incompatible data
+      for (const record of records) {
+        const currentData = record.data as Record<string, any>;
+        const fieldValue = currentData[input.columnId];
+        
+        let newValue: any;
+        if (input.type === "NUMBER") {
+          // For NUMBER type, only keep numeric values
+          newValue = typeof fieldValue === "number" ? fieldValue : null;
+        } else {
+          // For TEXT type, convert everything to string
+          newValue = fieldValue != null ? String(fieldValue) : "";
+        }
+        
+        // Update the record with the new value
+        await ctx.db.record.update({
+          where: { id: record.id },
+          data: {
+            data: {
+              ...currentData,
+              [input.columnId]: newValue,
+            },
+          },
+        });
+      }
+
       return updated;
     }),
 
@@ -336,7 +376,7 @@ export const baseRouter = createTRPCRouter({
   updateRecord: protectedProcedure
     .input(z.object({
       recordId: z.string(),
-      values: z.record(z.string(), z.string()),
+      values: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
     }))
     .mutation(async ({ ctx, input }) => {
       const record = await ctx.db.record.findFirst({

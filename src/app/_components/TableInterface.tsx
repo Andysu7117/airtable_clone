@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -25,12 +25,33 @@ interface EditableHeaderProps {
   onTypeChange?: (newType: "TEXT" | "NUMBER") => void;
   currentType: "TEXT" | "NUMBER";
   className?: string;
+  isLoading?: boolean;
 }
 
-function EditableHeader({ value, onSave, onDelete, onTypeChange, currentType, className }: EditableHeaderProps) {
+function EditableHeader({ value, onSave, onDelete, onTypeChange, currentType, className, isLoading }: EditableHeaderProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Update edit value when value prop changes
+  useEffect(() => {
+    setEditValue(value);
+  }, [value]);
 
   const handleDoubleClick = () => {
     setIsEditing(true);
@@ -69,12 +90,12 @@ function EditableHeader({ value, onSave, onDelete, onTypeChange, currentType, cl
 
   return (
     <div className="flex items-center space-x-2">
-      <span onDoubleClick={handleDoubleClick} className="cursor-pointer select-none">
+      <span onDoubleClick={handleDoubleClick} className="cursor-pointer select-none hover:text-blue-600 transition-colors">
         {value}
       </span>
       
       {/* Column Options Dropdown */}
-      <div className="relative">
+      <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
           className="p-1 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-700"
@@ -97,12 +118,16 @@ function EditableHeader({ value, onSave, onDelete, onTypeChange, currentType, cl
                   }
                   setIsDropdownOpen(false);
                 }}
+                disabled={isLoading}
                 className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2 ${
                   currentType === "TEXT" ? "text-blue-600 bg-blue-50" : "text-gray-700"
-                }`}
+                } ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <Type className="w-4 h-4" />
                 <span>Text</span>
+                {isLoading && currentType !== "TEXT" && (
+                  <span className="text-xs text-gray-500">(changing...)</span>
+                )}
               </button>
               <button
                 onClick={() => {
@@ -111,12 +136,16 @@ function EditableHeader({ value, onSave, onDelete, onTypeChange, currentType, cl
                   }
                   setIsDropdownOpen(false);
                 }}
+                disabled={isLoading}
                 className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2 ${
                   currentType === "NUMBER" ? "text-blue-600 bg-blue-50" : "text-gray-700"
-                }`}
+                } ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <Hash className="w-4 h-4" />
                 <span>Number</span>
+                {isLoading && currentType !== "NUMBER" && (
+                  <span className="text-xs text-gray-500">(changing...)</span>
+                )}
               </button>
               
               {/* Divider */}
@@ -147,6 +176,15 @@ const columnHelper = createColumnHelper<TableRow>();
 
 export default function TableInterface({ baseId, table, onChanged }: TableInterfaceProps) {
   const utils = api.useContext();
+  
+  // Local state for optimistic updates
+  const [optimisticTable, setOptimisticTable] = useState(table);
+  const [isUpdating, setIsUpdating] = useState(false);
+  
+  // Update optimistic table when prop changes
+  useEffect(() => {
+    setOptimisticTable(table);
+  }, [table]);
   
   const createColumn = api.base.createColumn.useMutation({
     onSuccess: async () => {
@@ -194,8 +232,206 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     onSuccess: async () => {
       await utils.base.getById.invalidate(baseId);
       onChanged?.();
+    },
+    onError: (error) => {
+      console.error('Failed to update column type:', error);
+      // You could add a toast notification here
     }
   });
+
+  // Optimistic column rename
+  const handleColumnRename = async (columnId: string, newName: string) => {
+    // Optimistically update the UI immediately
+    setOptimisticTable(prev => ({
+      ...prev,
+      columns: prev.columns.map(col => 
+        col.id === columnId ? { ...col, name: newName } : col
+      )
+    }));
+
+    try {
+      setIsUpdating(true);
+      await renameColumn.mutateAsync({ columnId, name: newName });
+    } catch (error) {
+      console.error('Failed to rename column:', error);
+      // Revert optimistic update on error
+      setOptimisticTable(prev => ({
+        ...prev,
+        columns: prev.columns.map(col => 
+          col.id === columnId ? { ...col, name: table.columns.find(c => c.id === columnId)?.name || col.name } : col
+        )
+      }));
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Optimistic record update
+  const handleRecordUpdate = async (recordId: string, columnId: string, value: string) => {
+    let processedValue: string | number | null = value;
+    const column = optimisticTable.columns.find(col => col.id === columnId);
+    
+    // Type validation based on optimistic column type
+    if (column && (column.type === "NUMBER" || column.type === "number")) {
+      if (value === "" || value === null || value === undefined) {
+        processedValue = null;
+      } else {
+        const numValue = Number(value);
+        if (isNaN(numValue)) {
+          // If invalid number, don't save
+          return;
+        }
+        processedValue = numValue;
+      }
+    } else {
+      // TEXT type
+      processedValue = value || "";
+    }
+
+    // Optimistically update the UI immediately
+    setOptimisticTable(prev => ({
+      ...prev,
+      rows: prev.rows.map(row => 
+        row.id === recordId ? {
+          ...row,
+          data: {
+            ...row.data,
+            [columnId]: processedValue
+          }
+        } : row
+      )
+    }));
+
+    try {
+      setIsUpdating(true);
+      await updateRecord.mutateAsync({ 
+        recordId, 
+        values: { [columnId]: processedValue } 
+      });
+    } catch (error) {
+      console.error('Failed to update record:', error);
+      // Revert optimistic update on error
+      setOptimisticTable(prev => ({
+        ...prev,
+        rows: prev.rows.map(row => 
+          row.id === recordId ? {
+            ...row,
+            data: {
+              ...row.data,
+              [columnId]: table.rows.find(r => r.id === recordId)?.data[columnId] || ""
+            }
+          } : row
+        )
+      }));
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Optimistic row creation
+  const handleCreateRow = async () => {
+    // Create a temporary row with a temporary ID
+    const tempId = `temp-${Date.now()}`;
+    const newRow: TableRow = {
+      id: tempId,
+      data: Object.fromEntries(
+        optimisticTable.columns.map(col => [col.id, ""])
+      )
+    };
+
+    // Optimistically add the row immediately
+    setOptimisticTable(prev => ({
+      ...prev,
+      rows: [...prev.rows, newRow]
+    }));
+
+    try {
+      await createRecord.mutateAsync({ tableId: optimisticTable.id });
+    } catch (error) {
+      console.error('Failed to create row:', error);
+      // Remove the temporary row on error
+      setOptimisticTable(prev => ({
+        ...prev,
+        rows: prev.rows.filter(row => row.id !== tempId)
+      }));
+    }
+  };
+
+  // Optimistic column creation
+  const handleCreateColumn = async () => {
+    const newColumnName = `Field ${optimisticTable.columns.length + 1}`;
+    
+    // Create a temporary column with a temporary ID
+    const tempId = `temp-col-${Date.now()}`;
+    const newColumn = {
+      id: tempId,
+      name: newColumnName,
+      type: "TEXT" as const,
+      order: optimisticTable.columns.length,
+      isRequired: false
+    };
+
+    // Optimistically add the column immediately
+    setOptimisticTable(prev => ({
+      ...prev,
+      columns: [...prev.columns, newColumn],
+      rows: prev.rows.map(row => ({
+        ...row,
+        data: {
+          ...row.data,
+          [tempId]: ""
+        }
+      }))
+    }));
+
+    try {
+      await createColumn.mutateAsync({ 
+        tableId: optimisticTable.id, 
+        name: newColumnName 
+      });
+    } catch (error) {
+      console.error('Failed to create column:', error);
+      // Remove the temporary column on error
+      setOptimisticTable(prev => ({
+        ...prev,
+        columns: prev.columns.filter(col => col.id !== tempId),
+        rows: prev.rows.map(row => {
+          const { [tempId]: _, ...restData } = row.data;
+          return { ...row, data: restData };
+        })
+      }));
+    }
+  };
+
+  // Optimistic column type change
+  const handleColumnTypeChange = async (columnId: string, newType: "TEXT" | "NUMBER") => {
+    // Optimistically update the column type immediately
+    setOptimisticTable(prev => ({
+      ...prev,
+      columns: prev.columns.map(col => 
+        col.id === columnId ? { ...col, type: newType } : col
+      )
+    }));
+
+    try {
+      setIsUpdating(true);
+      await updateColumnType.mutateAsync({ columnId, type: newType });
+    } catch (error) {
+      console.error('Failed to update column type:', error);
+      // Revert optimistic update on error
+      setOptimisticTable(prev => ({
+        ...prev,
+        columns: prev.columns.map(col => 
+          col.id === columnId ? { ...col, type: table.columns.find(c => c.id === columnId)?.type || col.type } : col
+        )
+      }));
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Check if any column type change is in progress
+  const isColumnTypeChanging = updateColumnType.isPending;
 
   const columns = useMemo<ColumnDef<TableRow, string | number | null>[]>(() => {
     // Add checkbox column
@@ -209,7 +445,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     ];
 
     // Add data columns
-    table.columns.forEach((col) => {
+    optimisticTable.columns.forEach((col) => {
       cols.push(
         columnHelper.accessor(
           (row): string => String(row.data[col.id] ?? ""),
@@ -221,7 +457,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
                   value={col.name}
                   currentType={col.type === "text" || col.type === "number" ? (col.type === "number" ? "NUMBER" : "TEXT") : col.type}
                   onSave={async (newName) => {
-                    await renameColumn.mutateAsync({ columnId: col.id, name: newName });
+                    await handleColumnRename(col.id, newName);
                   }}
                   onDelete={async () => {
                     if (confirm(`Are you sure you want to delete the column "${col.name}"?`)) {
@@ -230,12 +466,13 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
                   }}
                   onTypeChange={async (newType) => {
                     try {
-                      await updateColumnType.mutateAsync({ columnId: col.id, type: newType });
+                      await handleColumnTypeChange(col.id, newType);
                     } catch (error) {
                       console.error('Failed to update column type:', error);
                     }
                   }}
                   className="font-medium"
+                  isLoading={updateColumnType.isPending}
                 />
                 {col.isRequired && <span className="text-red-500">*</span>}
                 {col.name === "Notes" && <List className="w-4 h-4 text-gray-500" />}
@@ -254,16 +491,27 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
               const value = info.getValue();
               const onChange = async (v: string) => {
                 const recordId = info.row.original.id;
-                await updateRecord.mutateAsync({ recordId, values: { [col.id]: v } });
+                await handleRecordUpdate(recordId, col.id, v);
               };
 
-              if ((col.type === "NUMBER" || col.type === "number")) {
+              // Use the optimistic column type for immediate UI updates
+              const currentColumn = optimisticTable.columns.find(c => c.id === col.id);
+              const columnType = currentColumn?.type || col.type;
+
+              if (columnType === "NUMBER" || columnType === "number") {
                 return (
                   <input
                     type="number"
-                    defaultValue={value ? Number(value) : undefined}
+                    defaultValue={value ? Number(value) : ""}
                     onBlur={(e) => onChange(e.currentTarget.value)}
-                    className="px-2 py-1 w-full bg-transparent outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        onChange(e.currentTarget.value);
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    className="px-2 py-1 w-full bg-transparent outline-none focus:bg-white focus:border focus:border-blue-300 rounded"
+                    placeholder=""
                   />
                 );
               }
@@ -272,8 +520,14 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
                   type="text"
                   defaultValue={value ? String(value) : ""}
                   onBlur={(e) => onChange(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      onChange(e.currentTarget.value);
+                      e.currentTarget.blur();
+                    }
+                  }}
                   placeholder=""
-                  className="px-2 py-1 w-full bg-transparent outline-none"
+                  className="px-2 py-1 w-full bg-transparent outline-none focus:bg-white focus:border focus:border-blue-300 rounded"
                 />
               );
             },
@@ -289,9 +543,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
         id: "addColumn",
         header: () => (
           <button
-            onClick={async () => {
-              await createColumn.mutateAsync({ tableId: table.id, name: `Field ${table.columns.length + 1}` });
-            }}
+            onClick={handleCreateColumn}
             className="p-1 hover:bg-gray-100 rounded"
             title="Add new column"
           >
@@ -304,10 +556,10 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
     );
 
     return cols;
-  }, [table.columns, table.id, createColumn, renameColumn, deleteColumn, updateRecord, updateColumnType, utils.base.getById, baseId, onChanged]);
+  }, [optimisticTable, optimisticTable.id, createColumn, deleteColumn, updateColumnType, utils.base.getById, baseId, onChanged]);
 
   const tableInstance = useReactTable({
-    data: table.rows,
+    data: optimisticTable.rows,
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
@@ -362,7 +614,15 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto relative">
+        {(isUpdating || isColumnTypeChanging) && (
+          <div className="absolute top-2 right-2 z-10">
+            <div className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full flex items-center space-x-1">
+              <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+              <span>{isColumnTypeChanging ? "Changing type..." : "Saving..."}</span>
+            </div>
+          </div>
+        )}
         <table className="w-full border-collapse">
           <thead className="bg-gray-50 sticky top-0">
             {tableInstance.getHeaderGroups().map((headerGroup) => (
@@ -416,16 +676,17 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
             <tr>
               <td className="border-r border-gray-200 px-3 py-2 first:border-l-0">
                 <button
-                  onClick={async () => {
-                    await createRecord.mutateAsync({ tableId: table.id });
-                  }}
+                  onClick={handleCreateRow}
                   className="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
                 >
                   <Plus className="w-4 h-4 text-gray-500" />
                 </button>
               </td>
-              <td colSpan={table.columns.length + 1} className="border-r border-gray-200 px-3 py-2">
-                <button className="flex items-center text-sm text-gray-500 hover:text-gray-700">
+              <td colSpan={optimisticTable.columns.length + 1} className="border-r border-gray-200 px-3 py-2">
+                <button 
+                  onClick={handleCreateRow}
+                  className="flex items-center text-sm text-gray-500 hover:text-gray-700"
+                >
                   <Plus className="w-4 h-4 mr-1" />
                   Add...
                 </button>
@@ -437,7 +698,7 @@ export default function TableInterface({ baseId, table, onChanged }: TableInterf
 
       {/* Bottom Bar */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 bg-gray-50">
-        <span className="text-sm text-gray-600">{table.rows.length} records</span>
+        <span className="text-sm text-gray-600">{optimisticTable.rows.length} records</span>
         <button className="flex items-center space-x-2 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded">
           <Plus className="w-4 h-4" />
           <span>Add...</span>

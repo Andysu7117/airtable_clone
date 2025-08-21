@@ -8,7 +8,7 @@ export interface Column {
 
 export interface TableRow {
   id: string;
-  data: Record<string, string | number>;
+  data: Record<string, string | number | null>;
 }
 
 export interface Table {
